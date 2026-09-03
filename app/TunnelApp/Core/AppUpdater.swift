@@ -35,6 +35,8 @@ private final class SparkleUserDriverDelegate: NSObject, SPUStandardUserDriverDe
 private final class SparkleUpdaterDriver: AppUpdaterDriving {
     private let userDriverDelegate: SparkleUserDriverDelegate
     private let controller: SPUStandardUpdaterController
+    private var canCheckObservation: NSKeyValueObservation?
+    var onCanCheckChange: (() -> Void)?
 
     init() {
         let userDriverDelegate = SparkleUserDriverDelegate()
@@ -44,6 +46,11 @@ private final class SparkleUpdaterDriver: AppUpdaterDriving {
             updaterDelegate: nil,
             userDriverDelegate: userDriverDelegate
         )
+        canCheckObservation = controller.updater.observe(\.canCheckForUpdates, options: [.new]) { _, _ in
+            Task { @MainActor [weak self] in
+                self?.onCanCheckChange?()
+            }
+        }
     }
 
     var automaticallyChecksForUpdates: Bool {
@@ -93,7 +100,11 @@ final class AppUpdater: ObservableObject {
             return storedDriver
         }
         let driver = SparkleUpdaterDriver()
+        driver.onCanCheckChange = { [weak self] in
+            self?.objectWillChange.send()
+        }
         storedDriver = driver
+        objectWillChange.send()
         return driver
     }
 }

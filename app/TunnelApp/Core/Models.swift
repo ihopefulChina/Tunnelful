@@ -98,6 +98,23 @@ enum EdgeConnectionState: String, Equatable, Sendable {
     case unreachable = "无法连接"
 }
 
+enum MenuBarStatusSymbol {
+    static func name(process: ManagedProcessState, edge: EdgeConnectionState) -> String {
+        switch (process, edge) {
+        case (.running, .connected):
+            return "point.3.filled.connected.trianglepath.dotted"
+        case (.running, .unreachable), (.running, .degraded), (.failed, _):
+            return "exclamationmark.triangle"
+        case (.starting, _), (.running, .connecting):
+            return "icloud.and.arrow.up"
+        case (.running, _):
+            return "point.3.connected.trianglepath.dotted"
+        default:
+            return "circle.dotted"
+        }
+    }
+}
+
 enum TunnelTransportProtocol: String, CaseIterable, Identifiable, Sendable {
     case auto
     case http2

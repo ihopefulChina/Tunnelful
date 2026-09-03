@@ -36,6 +36,29 @@ final class CommandAndParserTests: XCTestCase {
         XCTAssertEqual(AppAppearance.allCases.map(\.title), ["跟随系统", "浅色", "深色"])
     }
 
+    func testMenuBarSymbolDistinguishesStoppedConnectingAndConnected() {
+        XCTAssertEqual(
+            MenuBarStatusSymbol.name(process: .stopped, edge: .unknown),
+            "circle.dotted"
+        )
+        XCTAssertEqual(
+            MenuBarStatusSymbol.name(process: .starting, edge: .connecting),
+            "icloud.and.arrow.up"
+        )
+        XCTAssertEqual(
+            MenuBarStatusSymbol.name(process: .running(pid: 1), edge: .connecting),
+            "icloud.and.arrow.up"
+        )
+        XCTAssertEqual(
+            MenuBarStatusSymbol.name(process: .running(pid: 1), edge: .connected),
+            "point.3.filled.connected.trianglepath.dotted"
+        )
+        XCTAssertEqual(
+            MenuBarStatusSymbol.name(process: .running(pid: 1), edge: .unreachable),
+            "exclamationmark.triangle"
+        )
+    }
+
     @MainActor
     func testTransportProtocolDefaultsToAutoAndPersistsSelection() {
         let suiteName = "app.tunnelful.mac.tests.\(UUID().uuidString)"

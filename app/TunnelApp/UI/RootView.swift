@@ -24,6 +24,7 @@ enum AppSection: String, CaseIterable, Identifiable {
 
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.openWindow) private var openWindow
     @State private var selection: AppSection? = .overview
 
     var body: some View {
@@ -44,8 +45,14 @@ struct RootView: View {
             consumeRequestedSection(section)
         }
         .onAppear {
+            TunnelfulWindowActions.openMainWindow = {
+                model.openMainWindow(openWindow: openWindow)
+            }
             ApplicationActivation.showSystemMenu()
             consumeRequestedSection(model.requestedSection)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .tunnelfulOpenMainWindow)) { _ in
+            model.openMainWindow(openWindow: openWindow)
         }
         .alert("需要处理", isPresented: Binding(
             get: { model.alertMessage != nil },

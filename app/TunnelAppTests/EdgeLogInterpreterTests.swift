@@ -46,12 +46,12 @@ final class EdgeLogInterpreterTests: XCTestCase {
         XCTAssertEqual(interpreter.consume("unable to reach the origin service"), .connected)
     }
 
-    func testGlobalCloudflareEstablishFailureClearsConnections() {
+    func testGlobalCloudflareEstablishFailureWithoutIndexKeepsLiveConnections() {
         var interpreter = EdgeLogInterpreter()
         XCTAssertEqual(interpreter.consume("Registered tunnel connection connIndex=0"), .connected)
         XCTAssertEqual(
             interpreter.consume("ERR Unable to establish connection with Cloudflare edge"),
-            .degraded
+            .connected
         )
     }
 
@@ -148,6 +148,18 @@ final class EdgeLogInterpreterTests: XCTestCase {
         }
         XCTAssertEqual(last, .unreachable)
         XCTAssertFalse(lines.contains(where: { $0.localizedCaseInsensitiveContains("Registered tunnel connection") }))
+    }
+
+    func testEstablishFailureWithoutConnIndexDoesNotDropLiveHAConnections() {
+        var interpreter = EdgeLogInterpreter()
+        XCTAssertEqual(interpreter.consume("Registered tunnel connection connIndex=0"), .connected)
+        XCTAssertEqual(interpreter.consume("Registered tunnel connection connIndex=1"), .connected)
+        XCTAssertEqual(
+            interpreter.consume(
+                #"ERR Unable to establish connection with Cloudflare edge error="TLS handshake with edge error: EOF""#
+            ),
+            .connected
+        )
     }
 
     func testSuccessfulRegistrationAfterFailuresClearsUnreachable() {

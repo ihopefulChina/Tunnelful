@@ -17,12 +17,22 @@ enum AppIdentity {
     }
 }
 
+extension Notification.Name {
+    static let tunnelfulOpenMainWindow = Notification.Name("app.tunnelful.mac.openMainWindow")
+}
+
+@MainActor
+enum TunnelfulWindowActions {
+    static var openMainWindow: (() -> Void)?
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var processController: TunnelProcessController?
     weak var loginController: CloudflaredLoginController?
     weak var model: AppModel?
     private var isAwaitingProcessShutdown = false
+    private var didStartBootstrap = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NotificationCenter.default.addObserver(
@@ -37,6 +47,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWindow.willCloseNotification,
             object: nil
         )
+        startBootstrapIfNeeded()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        ApplicationActivation.showSystemMenu()
+        if let window = sender.windows.first(where: { window in
+            (window.isVisible || window.isMiniaturized) && window.canBecomeKey
+        }) {
+            window.deminiaturize(nil)
+            window.makeKeyAndOrderFront(nil)
+            return true
+        }
+        if let openMainWindow = TunnelfulWindowActions.openMainWindow {
+            openMainWindow()
+        } else {
+            NotificationCenter.default.post(name: .tunnelfulOpenMainWindow, object: nil)
+        }
+        return true
     }
 
     @objc private func windowDidBecomeKey(_ notification: Notification) {
@@ -96,6 +124,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+
+    private func startBootstrapIfNeeded() {
+        guard !didStartBootstrap, let model else { return }
+        didStartBootstrap = true
+        Task { await model.bootstrap() }
     }
 }
 
@@ -181,12 +215,10 @@ struct TunnelAppMain: App {
     }
 
     private var menuBarSymbol: String {
-        switch (processController.processState, processController.edgeState) {
-        case (.running, .connected): return "point.3.filled.connected.trianglepath.dotted"
-        case (.running, .unreachable), (.failed, _): return "exclamationmark.triangle"
-        case (.running, _): return "point.3.connected.trianglepath.dotted"
-        default: return "point.3.connected.trianglepath.dotted"
-        }
+        MenuBarStatusSymbol.name(
+            process: processController.processState,
+            edge: processController.edgeState
+        )
     }
 }
 

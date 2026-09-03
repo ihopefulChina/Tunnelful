@@ -50,10 +50,9 @@ struct EdgeLogInterpreter: Equatable, Sendable {
         } else if Self.isPerConnectionLoss(normalized) {
             removeConnection(index)
         } else if Self.isEstablishFailure(normalized) {
+            // HA 日志偶尔没有 connIndex。有仍注册的连接时，不要把整条隧道清掉。
             if let index {
                 liveConnections.remove(index)
-            } else {
-                liveConnections.removeAll(keepingCapacity: true)
             }
         }
 

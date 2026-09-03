@@ -17,6 +17,9 @@ struct MenuBarPanel: View {
             Divider()
 
             Button {
+                TunnelfulWindowActions.openMainWindow = {
+                    model.openMainWindow(openWindow: openWindow)
+                }
                 model.openMainWindow(openWindow: openWindow)
             } label: {
                 Label("打开 \(AppIdentity.displayName)", systemImage: "macwindow")
