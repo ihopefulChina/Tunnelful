@@ -19,6 +19,7 @@
 <p align="center">
   <a href="https://ihopefulchina.github.io/Tunnelful/">中文官网</a>
   · <a href="https://github.com/ihopefulChina/Tunnelful/releases">下载</a>
+  · <a href="https://ihopefulchina.github.io/post/tunnelful-macos-control-plane/">设计文章</a>
   · <a href="#核心能力">核心能力</a>
   · <a href="#快速开始">快速开始</a>
   · <a href="#安全边界">安全边界</a>
@@ -198,6 +199,7 @@ Tunnelful 会先显示待执行命令；截图隐私模式开启时会遮罩其�
 - [贡献指南](CONTRIBUTING.md)：了解开发环境、实现约束与验证要求。
 - [安全政策](SECURITY.md)：确认支持范围并私下报告安全问题。
 - [发布流程](docs/RELEASE.md)：维护者构建、校验和发布安装包的完整门槛。
+- [设计文章](https://ihopefulchina.github.io/post/tunnelful-macos-control-plane/)：从控制面边界、配置写入协议与状态拆分理解 Tunnelful。
 - [第三方声明](THIRD_PARTY_NOTICES.md)：查看依赖、素材与商标说明。
 - [GitHub Issues](https://github.com/ihopefulChina/Tunnelful/issues)：提交可复现的问题或聚焦的功能建议。
 
