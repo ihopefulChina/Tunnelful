@@ -5,8 +5,13 @@ on:
     branches: [main]
     paths:
       - website/**
+      - appcast.xml
+      - VERSION
       - .github/workflows/pages.yml
   workflow_dispatch:
+  workflow_run:
+    workflows: ["发布 Tunnelful macOS 应用"]
+    types: [completed]
 
 permissions:
   actions: read
@@ -21,6 +26,7 @@ concurrency:
 jobs:
   build:
     name: 构建网站
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
       TUNNELFUL_PRIVATE_SCAN_PATTERN: ${{ secrets.TUNNELFUL_PRIVATE_SCAN_PATTERN }}
@@ -33,6 +39,30 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: website/package-lock.json
+      - name: 使用最新 GitHub Release 的 Sparkle 更新源
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tunnelful-appcast website/public
+          if gh release download --pattern 'appcast.xml' --dir /tmp/tunnelful-appcast; then
+            cp /tmp/tunnelful-appcast/appcast.xml website/public/appcast.xml
+            echo '已使用最新 GitHub Release 中的 Sparkle 更新源。'
+          elif [[ -f website/public/appcast.xml ]]; then
+            echo '最新 GitHub Release 没有 appcast.xml，沿用仓库中的更新源。'
+          else
+            echo '缺少 Sparkle 更新源。' >&2
+            exit 1
+          fi
+      - name: 确认更新源包含当前版本
+        if: github.event_name == 'workflow_run'
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          if ! grep -Fq "<sparkle:shortVersionString>$version</sparkle:shortVersionString>" website/public/appcast.xml; then
+            echo "GitHub Pages 使用的更新源未包含 $version。" >&2
+            exit 1
+          fi
       - name: 检查公开内容
         run: bash scripts/check-public-content.sh
       - name: 安装锁定依赖
@@ -52,6 +82,7 @@ jobs:
 
   deploy:
     name: 部署网站
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -24,6 +24,12 @@ jobs:
         uses: actions/checkout@v6
       - name: 检查敏感内容
         run: bash scripts/check-public-content.sh
+      - name: 确认发布工作流会生成 Sparkle 更新源
+        run: |
+          set -euo pipefail
+          grep -Fq 'secrets.TUNNELFUL_SPARKLE_ED_PRIVATE_KEY' .github/workflows/publish-app.yml
+          grep -Fq 'release/appcast.xml' .github/workflows/publish-app.yml
+          grep -Fq "gh release download --pattern 'appcast.xml'" .github/workflows/pages.yml
 
   macos-app:
     name: macOS 应用（${{ matrix.architecture }}）

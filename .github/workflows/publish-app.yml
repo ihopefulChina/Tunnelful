@@ -18,6 +18,8 @@ jobs:
     runs-on: macos-15
     env:
       TUNNELFUL_PRIVATE_SCAN_PATTERN: ${{ secrets.TUNNELFUL_PRIVATE_SCAN_PATTERN }}
+      TUNNELFUL_SPARKLE_ED_PRIVATE_KEY: ${{ secrets.TUNNELFUL_SPARKLE_ED_PRIVATE_KEY }}
+      TUNNELFUL_REQUIRE_SPARKLE_APPCAST: "1"
     steps:
       - name: 检出仓库
         uses: actions/checkout@v6
@@ -45,8 +47,8 @@ jobs:
         run: bash scripts/build-release.sh
       - name: 验证发布产物
         run: |
-          bash scripts/verify-release.sh "release/Tunnelful-${{ steps.version.outputs.version }}-arm64.dmg"
-          bash scripts/verify-release.sh "release/Tunnelful-${{ steps.version.outputs.version }}-x86_64.dmg"
+          bash scripts/verify-release.sh "release/Tunnelful-${{ steps.version.outputs.version }}-arm64.dmg" release/appcast.xml
+          bash scripts/verify-release.sh "release/Tunnelful-${{ steps.version.outputs.version }}-x86_64.dmg" release/appcast.xml
       - name: 保存 Apple 芯片工作流产物
         uses: actions/upload-artifact@v7
         with:
@@ -62,6 +64,12 @@ jobs:
           path: |
             release/Tunnelful-${{ steps.version.outputs.version }}-x86_64.dmg
             release/Tunnelful-${{ steps.version.outputs.version }}-x86_64.dmg.sha256
+          if-no-files-found: error
+      - name: 保存 Sparkle 更新源
+        uses: actions/upload-artifact@v7
+        with:
+          name: Tunnelful-${{ steps.version.outputs.version }}-appcast
+          path: release/appcast.xml
           if-no-files-found: error
       - name: 创建 GitHub Release
         env:
@@ -84,6 +92,7 @@ jobs:
             "release/Tunnelful-$VERSION-arm64.dmg.sha256#Apple 芯片 SHA-256 校验文件" \
             "release/Tunnelful-$VERSION-x86_64.dmg#Tunnelful Intel 磁盘映像" \
             "release/Tunnelful-$VERSION-x86_64.dmg.sha256#Intel SHA-256 校验文件" \
+            "release/appcast.xml#Sparkle 更新源" \
             --verify-tag \
             "${release_flags[@]}" \
             --title "$release_title" \
