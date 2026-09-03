@@ -36,7 +36,7 @@ bash scripts/verify-release.sh release/Tunnelful-0.1.0-x86_64.dmg
 
 ## GitHub Release
 
-推送与产品版本一致的标签后，`.github/workflows/release.yml` 会重新测试、构建并验证候选包，然后创建 GitHub Release。只有版本号包含预发布段时才会标记为预发布。当前版本对应标签为：
+推送与产品版本一致的标签后，`.github/workflows/publish-app.yml` 会重新测试、构建并验证候选包，然后创建 GitHub Release。只有版本号包含预发布段时才会标记为预发布。当前版本对应标签为：
 
 ```text
 v0.1.0

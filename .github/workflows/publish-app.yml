@@ -1,4 +1,4 @@
-name: 发布 macOS 应用
+name: 发布 Tunnelful macOS 应用
 
 on:
   push:
