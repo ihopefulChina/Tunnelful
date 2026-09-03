@@ -5,13 +5,14 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "$script_dir/.." && pwd)"
 product_config="$project_root/app/Config/Product.xcconfig"
 release_version_file="$project_root/VERSION"
+entitlements_path="$project_root/app/TunnelApp/Tunnelful.entitlements"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo '发布包只能在 macOS 上构建。' >&2
   exit 1
 fi
 
-for command_name in xcodebuild codesign hdiutil ditto lipo plutil shasum strip; do
+for command_name in xcodebuild codesign hdiutil ditto lipo plutil shasum strip otool install_name_tool; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     echo "缺少发布命令：$command_name" >&2
     exit 1
@@ -51,6 +52,10 @@ sparkle_public_key='0hyxOLR9zBFNvSdozSz0hALE/wHrk72Vsad4KxqpyM0='
 release_notes_path="$project_root/.github/release-notes/$version.md"
 if [[ ! -f "$release_notes_path" ]]; then
   echo "缺少发布说明：$release_notes_path" >&2
+  exit 1
+fi
+if [[ ! -f "$entitlements_path" ]]; then
+  echo "缺少代码签名权益文件：$entitlements_path" >&2
   exit 1
 fi
 
@@ -179,6 +184,10 @@ build_release_for_architecture() {
     echo "没有找到 $architecture 构建产物：$built_app" >&2
     exit 1
   fi
+  if [[ ! -f "$built_app/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle" ]]; then
+    echo "$architecture 构建产物缺少 Sparkle.framework。" >&2
+    exit 1
+  fi
 
   local built_info_plist="$built_app/Contents/Info.plist"
   # Xcode 的自动 Info.plist 生成器不会稳定写入自定义 INFOPLIST_KEY_*；
@@ -236,10 +245,16 @@ build_release_for_architecture() {
   local binary="$stage_dir/$app_name/Contents/MacOS/Tunnelful"
   echo "移除 $architecture 主程序中的调试符号与本机构建路径…"
   strip -S -x "$binary"
+  if ! otool -l "$binary" | grep -F '@executable_path/../Frameworks' >/dev/null; then
+    echo "补写 $architecture 主程序 Frameworks rpath…"
+    install_name_tool -add_rpath '@executable_path/../Frameworks' "$binary"
+  fi
   assert_thin_macho_tree "$stage_dir/$app_name" "$architecture"
 
   echo "为 $architecture 应用 ad-hoc 签名…"
-  codesign --force --deep --sign - --timestamp=none --options runtime "$stage_dir/$app_name"
+  local sparkle_framework="$stage_dir/$app_name/Contents/Frameworks/Sparkle.framework"
+  codesign --force --sign - --timestamp=none --options runtime --deep "$sparkle_framework"
+  codesign --force --sign - --timestamp=none --options runtime --entitlements "$entitlements_path" "$stage_dir/$app_name"
   codesign --verify --deep --strict --verbose=2 "$stage_dir/$app_name"
 
   rm -f "$output_dir/$dmg_name" "$output_dir/$sha_name"

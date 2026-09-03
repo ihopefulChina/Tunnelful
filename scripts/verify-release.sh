@@ -55,7 +55,7 @@ case "$expected_architecture" in
   x86_64) expected_build="$((base_build - 1))" ;;
 esac
 
-for command_name in codesign file grep hdiutil lipo plutil shasum; do
+for command_name in codesign file grep hdiutil lipo plutil shasum otool; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     echo "缺少验证命令：$command_name" >&2
     exit 1
@@ -65,12 +65,29 @@ done
 mount_dir="$(mktemp -d -t tunnelful-verify)"
 device=''
 sparkle_key_file=''
+launch_err=''
+launch_out=''
+launch_pid=''
+verify_home=''
 cleanup() {
+  if [[ -n "${launch_pid:-}" ]]; then
+    kill "$launch_pid" 2>/dev/null || true
+    wait "$launch_pid" 2>/dev/null || true
+  fi
   if [[ -n "$device" ]]; then
     hdiutil detach "$device" -quiet || true
   fi
   if [[ -n "${sparkle_key_file:-}" && -f "$sparkle_key_file" ]]; then
     rm -f "$sparkle_key_file"
+  fi
+  if [[ -n "${launch_err:-}" && -f "$launch_err" ]]; then
+    rm -f "$launch_err"
+  fi
+  if [[ -n "${launch_out:-}" && -f "$launch_out" ]]; then
+    rm -f "$launch_out"
+  fi
+  if [[ -n "${verify_home:-}" && -d "$verify_home" ]]; then
+    rm -rf "$verify_home"
   fi
   if [[ -n "${mount_dir:-}" && "$mount_dir" == */tunnelful-verify.* && -d "$mount_dir" ]]; then
     rmdir "$mount_dir" 2>/dev/null || true
@@ -207,6 +224,40 @@ if [[ "$menu_bar_only" != 'true' && "$menu_bar_only" != 'YES' ]]; then
   echo "LSUIElement 未启用：$menu_bar_only" >&2
   exit 1
 fi
+
+sparkle_binary="$app_path/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"
+if [[ ! -f "$sparkle_binary" ]]; then
+  echo '发布包缺少 Sparkle.framework。' >&2
+  exit 1
+fi
+if ! otool -l "$binary" | grep -F '@executable_path/../Frameworks' >/dev/null; then
+  echo '主程序缺少 @executable_path/../Frameworks rpath，Sparkle 无法加载。' >&2
+  exit 1
+fi
+entitlements_xml="$(codesign -d --entitlements :- "$binary" 2>/dev/null || true)"
+if ! grep -q 'com.apple.security.cs.disable-library-validation' <<< "$entitlements_xml"; then
+  echo 'Hardened Runtime 下嵌入 Sparkle 需要 com.apple.security.cs.disable-library-validation。' >&2
+  exit 1
+fi
+
+launch_out="$(mktemp -t tunnelful-verify-out)"
+launch_err="$(mktemp -t tunnelful-verify-err)"
+verify_home="$(mktemp -d -t tunnelful-verify-home)"
+HOME="$verify_home" "$binary" >"$launch_out" 2>"$launch_err" &
+launch_pid=$!
+sleep 2
+if ! kill -0 "$launch_pid" 2>/dev/null; then
+  wait "$launch_pid" 2>/dev/null || true
+  launch_pid=''
+  echo '应用启动失败。' >&2
+  if [[ -s "$launch_err" ]]; then
+    cat "$launch_err" >&2
+  fi
+  exit 1
+fi
+kill "$launch_pid" 2>/dev/null || true
+wait "$launch_pid" 2>/dev/null || true
+launch_pid=''
 
 if find "$app_path" -type f -name cloudflared -print -quit | grep -q .; then
   echo '发布包不应捆绑 cloudflared。' >&2

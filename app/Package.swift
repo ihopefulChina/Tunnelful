@@ -17,7 +17,7 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "TunnelApp",
-            exclude: ["Assets.xcassets"]
+            exclude: ["Assets.xcassets", "Tunnelful.entitlements"]
         ),
         .testTarget(
             name: "TunnelAppTests",

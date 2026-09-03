@@ -33,7 +33,7 @@
 		010000000000000000000019 /* ProcessControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000019 /* ProcessControllerTests.swift */; };
 		01000000000000000000001A /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02000000000000000000001D /* AppUpdater.swift */; };
 		01000000000000000000001C /* AppUpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02000000000000000000001F /* AppUpdaterTests.swift */; };
-		01A00000000000000000001B /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 01A00000000000000000001C /* Sparkle */; };
+		01A00000000000000000001B /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 01A00000000000000000001C /* Sparkle */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy); }; };
 		01000000000000000000001D /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000020 /* LaunchAtLoginManager.swift */; };
 		01000000000000000000001E /* EnvironmentInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000021 /* EnvironmentInspector.swift */; };
 		01000000000000000000001F /* CloudflaredLoginController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000022 /* CloudflaredLoginController.swift */; };
@@ -89,6 +89,7 @@
 		020000000000000000000023 /* EnvironmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentView.swift; sourceTree = "<group>"; };
 		020000000000000000000024 /* LaunchAtLoginTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginTests.swift; sourceTree = "<group>"; };
 		020000000000000000000025 /* EdgeLogInterpreterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EdgeLogInterpreterTests.swift; sourceTree = "<group>"; };
+		020000000000000000000026 /* Tunnelful.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tunnelful.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -111,6 +112,7 @@
 			isa = PBXGroup;
 			children = (
 				02000000000000000000000B /* TunnelAppMain.swift */,
+				020000000000000000000026 /* Tunnelful.entitlements */,
 				050000000000000000000003 /* Core */,
 				050000000000000000000004 /* UI */,
 				020000000000000000000016 /* Assets.xcassets */,
