@@ -291,6 +291,10 @@ generate_sparkle_appcast() {
   x86_64_dmg="$output_dir/Tunnelful-$version-x86_64.dmg"
 
   if [[ -z "${TUNNELFUL_SPARKLE_ED_PRIVATE_KEY:-}" && -z "${TUNNELFUL_SPARKLE_ED_KEY_FILE:-}" ]]; then
+    if [[ "${GITHUB_ACTIONS:-}" == "true" || "${TUNNELFUL_REQUIRE_SPARKLE_APPCAST:-}" == "1" ]]; then
+      echo '发布必须提供 TUNNELFUL_SPARKLE_ED_PRIVATE_KEY 或 TUNNELFUL_SPARKLE_ED_KEY_FILE 以生成 Sparkle 更新源。' >&2
+      exit 1
+    fi
     echo '未提供 Sparkle 私钥，已跳过 appcast。磁盘映像仍可发布；更新源可在之后用同一对密钥补签。'
     return 0
   fi
@@ -313,15 +317,11 @@ generate_sparkle_appcast() {
   ditto "$x86_64_dmg" "$appcast_dir/Tunnelful-$version-x86_64.dmg"
   ditto "$release_notes_path" "$appcast_dir/Tunnelful-$version-arm64.md"
   ditto "$release_notes_path" "$appcast_dir/Tunnelful-$version-x86_64.md"
-  if [[ -f "$project_root/appcast.xml" ]]; then
-    ditto "$project_root/appcast.xml" "$appcast_dir/appcast.xml"
-  fi
 
   "$generate_appcast" \
     --ed-key-file "$private_key_path" \
     --download-url-prefix "https://github.com/ihopefulChina/Tunnelful/releases/download/v$version/" \
     --link "https://github.com/ihopefulChina/Tunnelful/releases/tag/v$version" \
-    --versions "$x86_64_build,$arm64_build" \
     --embed-release-notes \
     --maximum-deltas 0 \
     "$appcast_dir"

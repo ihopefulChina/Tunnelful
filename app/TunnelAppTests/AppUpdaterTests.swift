@@ -28,6 +28,18 @@ final class AppUpdaterTests: XCTestCase {
 
         XCTAssertEqual(driver.checkCount, 1)
     }
+
+    func testNumericBuildNumbersCompareAsIntegers() {
+        XCTAssertTrue(AppUpdateVersion.isNewer("11", than: "9"))
+        XCTAssertFalse(AppUpdateVersion.isNewer("5", than: "9"))
+        XCTAssertFalse(AppUpdateVersion.isNewer("9", than: "9"))
+    }
+
+    func testMarketingVersionsCompareByNumericComponents() {
+        XCTAssertTrue(AppUpdateVersion.isNewer("0.1.5", than: "0.1.2"))
+        XCTAssertFalse(AppUpdateVersion.isNewer("0.1.2", than: "0.1.4"))
+        XCTAssertFalse(AppUpdateVersion.isNewer("0.1.5", than: "0.1.5"))
+    }
 }
 
 @MainActor
