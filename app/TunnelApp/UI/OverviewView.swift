@@ -32,7 +32,7 @@ struct OverviewView: View {
                     StatusTile(
                         title: "Cloudflare Edge",
                         value: process.edgeState.rawValue,
-                        detail: "按已注册的 Edge 连接判断；其中一条重连不等于隧道断开。",
+                        detail: edgeDetail,
                         symbol: edgeSymbol,
                         tint: edgeTint
                     )
@@ -43,6 +43,23 @@ struct OverviewView: View {
                         symbol: originSymbol,
                         tint: originTint
                     )
+                }
+
+                if let diagnostic = process.edgeDiagnostic {
+                    VStack(alignment: .leading, spacing: 10) {
+                        NoticeView(
+                            kind: process.edgeState == .unreachable ? .warning : .info,
+                            title: process.edgeState == .unreachable
+                                ? "Cloudflare Edge 连不上"
+                                : "正在连接 Cloudflare Edge",
+                            message: diagnostic
+                        )
+                        if process.suggestsHTTP2Protocol, model.transportProtocol == .auto {
+                            Button("跳过 QUIC，使用 HTTP/2 重试") {
+                                model.retryTunnelUsingHTTP2()
+                            }
+                        }
+                    }
                 }
 
                 managedTunnelSection
@@ -185,11 +202,27 @@ struct OverviewView: View {
         return .secondary
     }
 
+    private var edgeDetail: String {
+        switch process.edgeState {
+        case .connected:
+            return "按已注册的 Edge 连接判断；其中一条重连不等于隧道断开。"
+        case .degraded:
+            return "部分 Edge 连接已断开，cloudflared 正在重连。"
+        case .connecting:
+            return "进程已启动，正在与 Cloudflare Edge 建立连接。"
+        case .unreachable:
+            return "进程仍在运行，但还没有注册成功的 Edge 连接。"
+        case .unknown:
+            return "尚未从托管进程的日志判断 Edge 状态。"
+        }
+    }
+
     private var edgeSymbol: String {
         switch process.edgeState {
         case .connected: return "checkmark.icloud.fill"
         case .degraded: return "exclamationmark.icloud.fill"
         case .connecting: return "icloud.and.arrow.up"
+        case .unreachable: return "xmark.icloud.fill"
         case .unknown: return "icloud"
         }
     }
@@ -199,6 +232,7 @@ struct OverviewView: View {
         case .connected: return AppPalette.statusGreen
         case .degraded: return AppPalette.statusOrange
         case .connecting: return .accentColor
+        case .unreachable: return .red
         case .unknown: return .secondary
         }
     }

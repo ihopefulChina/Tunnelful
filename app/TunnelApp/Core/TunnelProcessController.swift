@@ -7,41 +7,102 @@ import Foundation
 struct EdgeLogInterpreter: Equatable, Sendable {
     private var liveConnections: Set<Int> = []
     private var sawRegistration = false
+    private var quicDialFailed = false
+    private var http2EstablishFailed = false
+    private var precheckHardFail = false
+    private var switchedToHTTP2 = false
+    private(set) var diagnostic: String?
 
     mutating func reset() {
         liveConnections.removeAll(keepingCapacity: true)
         sawRegistration = false
+        quicDialFailed = false
+        http2EstablishFailed = false
+        precheckHardFail = false
+        switchedToHTTP2 = false
+        diagnostic = nil
+    }
+
+    var suggestsHTTP2Protocol: Bool {
+        quicDialFailed && !sawRegistration
     }
 
     mutating func consume(_ line: String) -> EdgeConnectionState {
         let normalized = line.lowercased()
         let index = Self.connectionIndex(in: normalized)
 
+        if Self.isPrecheckHardFail(normalized) {
+            precheckHardFail = true
+        }
+        if Self.isQUICDialFailure(normalized) {
+            quicDialFailed = true
+        }
+        if normalized.contains("switching to fallback protocol http2") {
+            switchedToHTTP2 = true
+        }
+        if Self.isHTTP2EstablishFailure(normalized) {
+            http2EstablishFailed = true
+        }
+
         if Self.isRegistration(normalized) {
             liveConnections.insert(index ?? 0)
             sawRegistration = true
         } else if Self.isPerConnectionLoss(normalized) {
+            removeConnection(index)
+        } else if Self.isEstablishFailure(normalized) {
             if let index {
                 liveConnections.remove(index)
-            } else if liveConnections.count <= 1 {
+            } else {
                 liveConnections.removeAll(keepingCapacity: true)
             }
-        } else if Self.isGlobalEstablishFailure(normalized) {
-            liveConnections.removeAll(keepingCapacity: true)
         }
 
+        let state = currentState
+        diagnostic = Self.makeDiagnostic(
+            state: state,
+            quicDialFailed: quicDialFailed,
+            http2EstablishFailed: http2EstablishFailed,
+            precheckHardFail: precheckHardFail,
+            switchedToHTTP2: switchedToHTTP2
+        )
+        return state
+    }
+
+    private var currentState: EdgeConnectionState {
         if !liveConnections.isEmpty {
             return .connected
         }
         if sawRegistration {
             return .degraded
         }
+        if precheckHardFail || http2EstablishFailed {
+            return .unreachable
+        }
         return .connecting
     }
 
+    private mutating func removeConnection(_ index: Int?) {
+        if let index {
+            liveConnections.remove(index)
+        } else if liveConnections.count <= 1 {
+            liveConnections.removeAll(keepingCapacity: true)
+        }
+    }
+
+    /// "unregistered" contains "registered"; "registering" is still in progress.
     private static func isRegistration(_ line: String) -> Bool {
-        line.contains("registered tunnel connection")
+        if line.contains("unregister") || line.contains("registering") {
+            return false
+        }
+        if line.contains("registered tunnel connection")
             || line.contains("tunnel connection registered")
+            || line.contains("connection registered") {
+            return true
+        }
+        return line.range(
+            of: #"connection\s+\S+\s+registered"#,
+            options: .regularExpression
+        ) != nil
     }
 
     private static func isPerConnectionLoss(_ line: String) -> Bool {
@@ -49,10 +110,62 @@ struct EdgeLogInterpreter: Equatable, Sendable {
             || line.contains("unregistered tunnel connection")
     }
 
-    private static func isGlobalEstablishFailure(_ line: String) -> Bool {
-        line.contains("unable to establish connection with cloudflare")
-            || line.contains("failed to dial a quic connection")
+    private static func isEstablishFailure(_ line: String) -> Bool {
+        isQUICDialFailure(line) || isHTTP2EstablishFailure(line)
             || line.contains("failed to dial cloudflare edge")
+    }
+
+    private static func isQUICDialFailure(_ line: String) -> Bool {
+        line.contains("failed to dial a quic connection")
+            || line.contains("unable to connect to cloudflare network with `quic`")
+            || line.contains("unable to connect to cloudflare network with quic")
+    }
+
+    private static func isHTTP2EstablishFailure(_ line: String) -> Bool {
+        line.contains("unable to establish connection with cloudflare")
+            || line.contains("tls handshake with edge error")
+    }
+
+    private static func isPrecheckHardFail(_ line: String) -> Bool {
+        guard line.contains("precheck complete") else { return false }
+        return line.range(
+            of: #"hard_fail["\s:=]+true"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    private static func makeDiagnostic(
+        state: EdgeConnectionState,
+        quicDialFailed: Bool,
+        http2EstablishFailed: Bool,
+        precheckHardFail: Bool,
+        switchedToHTTP2: Bool
+    ) -> String? {
+        switch state {
+        case .connected, .unknown:
+            return nil
+        case .degraded:
+            return "已有 Edge 连接断开，cloudflared 正在重连。其中一条 HA 连接重试不等于整条隧道中断。"
+        case .unreachable:
+            if quicDialFailed && http2EstablishFailed {
+                return "cloudflared 连不上 Cloudflare Edge：QUIC（UDP 7844）超时，HTTP/2 的 TLS 握手也被关闭。进程还在重试，但现在不能转发流量。请检查防火墙、公司网或 VPN 是否放行 Cloudflare 的 7844 端口。"
+            }
+            if http2EstablishFailed {
+                return "HTTP/2 到 Cloudflare Edge 的 TLS 握手失败。请检查本机代理、VPN 或防火墙是否干扰了 TCP 7844。"
+            }
+            if precheckHardFail {
+                return "cloudflared 启动预检失败：到 Cloudflare Edge 的 QUIC 与 HTTP/2 均不可用。请放行 7844 的 UDP/TCP，或关掉会拦截该端口的代理后再启动。"
+            }
+            return "还没有成功注册的 Edge 连接，隧道现在不能转发流量。"
+        case .connecting:
+            if switchedToHTTP2 {
+                return "QUIC（UDP 7844）已被拦截，正在改用 HTTP/2。"
+            }
+            if quicDialFailed {
+                return "QUIC（UDP 7844）连接超时，cloudflared 仍在重试，稍后可能回退到 HTTP/2。也可在设置里改用 HTTP/2 立即重试。"
+            }
+            return nil
+        }
     }
 
     private static let connectionIndexExpression = try? NSRegularExpression(
@@ -74,6 +187,8 @@ struct EdgeLogInterpreter: Equatable, Sendable {
 final class TunnelProcessController: ObservableObject {
     @Published private(set) var processState: ManagedProcessState = .stopped
     @Published private(set) var edgeState: EdgeConnectionState = .unknown
+    @Published private(set) var edgeDiagnostic: String?
+    @Published private(set) var suggestsHTTP2Protocol = false
     @Published private(set) var logs: [LogEntry] = []
     private var edgeInterpreter = EdgeLogInterpreter()
 
@@ -125,8 +240,7 @@ final class TunnelProcessController: ObservableObject {
         newProcess.standardError = standardError
 
         processState = .starting
-        edgeInterpreter.reset()
-        edgeState = .connecting
+        resetEdgeObservation(to: .connecting)
         appendAppLog("正在启动托管隧道。")
 
         newProcess.terminationHandler = { [weak self, weak newProcess] terminated in
@@ -172,8 +286,7 @@ final class TunnelProcessController: ObservableObject {
             try? standardError.fileHandleForReading.close()
             try? standardError.fileHandleForWriting.close()
             processState = .failed(exitCode: -1)
-            edgeInterpreter.reset()
-            edgeState = .unknown
+            resetEdgeObservation(to: .unknown)
             throw CloudflaredError.processCouldNotStart(error.localizedDescription)
         }
     }
@@ -254,8 +367,7 @@ final class TunnelProcessController: ObservableObject {
         }
         terminatedProcess.terminationHandler = nil
         process = nil
-        edgeInterpreter.reset()
-        edgeState = .unknown
+        resetEdgeObservation(to: .unknown)
         if terminationStatus == 0 || wasExpectedTermination {
             processState = .stopped
         } else {
@@ -274,11 +386,24 @@ final class TunnelProcessController: ObservableObject {
         for rawLine in completeLines where !rawLine.isEmpty {
             let message = redactor.redact(rawLine)
             logs.append(LogEntry(timestamp: Date(), stream: stream, message: message))
-            edgeState = edgeInterpreter.consume(message)
+            applyEdgeInterpretation(edgeInterpreter.consume(message))
         }
         if logs.count > 2_000 {
             logs.removeFirst(logs.count - 2_000)
         }
+    }
+
+    private func resetEdgeObservation(to state: EdgeConnectionState) {
+        edgeInterpreter.reset()
+        edgeState = state
+        edgeDiagnostic = nil
+        suggestsHTTP2Protocol = false
+    }
+
+    private func applyEdgeInterpretation(_ state: EdgeConnectionState) {
+        edgeState = state
+        edgeDiagnostic = edgeInterpreter.diagnostic
+        suggestsHTTP2Protocol = edgeInterpreter.suggestsHTTP2Protocol
     }
 
     private func appendAppLog(_ message: String) {

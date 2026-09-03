@@ -39,7 +39,7 @@
 <p align="center"><sub>主窗口概览 · 截图使用示例数据</sub></p>
 
 > [!IMPORTANT]
-> 当前源码版本为 `0.1.1`，可下载版本及其支持架构以 [GitHub Releases](https://github.com/ihopefulChina/Tunnelful/releases) 中的实际附件为准。目前公开安装包采用 ad-hoc 签名，尚未使用 Developer ID 签名或经过 Apple 公证。
+> 当前源码版本为 `0.1.2`，可下载版本及其支持架构以 [GitHub Releases](https://github.com/ihopefulChina/Tunnelful/releases) 中的实际附件为准。目前公开安装包采用 ad-hoc 签名，尚未使用 Developer ID 签名或经过 Apple 公证。
 
 ## 核心能力
 
@@ -50,15 +50,15 @@
 - **安全写入**：先做本地结构检查，再调用官方 CLI 校验；通过后备份原文件并原子写入。文件被其他应用改动时会停止覆盖。
 - **服务发布**：检查 HTTP/HTTPS 源站，更新本地 Ingress，并在明确确认后通过官方 CLI 配置 DNS 路由。
 - **运行状态**：启动、停止和重启由 Tunnelful 创建的进程，分别展示本地进程、Cloudflare Edge 与源站状态。
-- **原生日常体验**：窗口打开时提供完整 macOS 系统菜单；关闭全部窗口后隐藏 Dock 图标并继续常驻菜单栏。同时支持系统/浅色/深色外观、登录 Mac 时打开、应用启动后运行当前 Tunnel，以及手动检查更新。
+- **原生日常体验**：窗口打开时提供完整 macOS 系统菜单；关闭全部窗口后隐藏 Dock 图标并继续常驻菜单栏。同时支持系统/浅色/深色外观、登录 Mac 时打开、应用启动后运行当前 Tunnel，以及应用内检查并安装更新。
 
 ## 适用范围
 
 | 项目 | 当前支持 |
 | --- | --- |
-| 当前源码 | `0.1.1`；已发布版本见 [Releases](https://github.com/ihopefulChina/Tunnelful/releases) |
+| 当前源码 | `0.1.2`；已发布版本见 [Releases](https://github.com/ihopefulChina/Tunnelful/releases) |
 | macOS | macOS 14 或更高版本 |
-| `0.1.1` 构建目标 | Apple 芯片 `arm64` 与 Intel `x86_64` 单架构 DMG |
+| `0.1.2` 构建目标 | Apple 芯片 `arm64` 与 Intel `x86_64` 单架构 DMG |
 | Tunnel 引擎 | 用户自行安装的官方 `cloudflared` |
 | 主要工作流 | 已有本地配置的 locally-managed 命名 Tunnel |
 | 分发状态 | ad-hoc 签名，尚无 Developer ID 签名与 Apple 公证 |
@@ -167,8 +167,8 @@ Tunnelful 会先显示待执行命令。你可以只复制它；若要直接执�
 - 菜单栏可打开主窗口、启动/停止/重启当前 Tunnel、查看日志、检查环境和检查更新。
 - “登录 Mac 时自动打开 Tunnelful”与“打开 Tunnelful 后自动启动当前 Tunnel”可以分别启用；自动启动只会在 `cloudflared` 与可运行 Tunnel 等条件完整时发生。
 - 登录项需要从“应用程序”文件夹中的 Tunnelful 注册。若仍从安装盘或 macOS 临时副本运行，需退出后从“应用程序”重新打开。macOS 也可能要求在系统设置中确认。
-- 软件更新只在打开更新界面或主动检查时访问 GitHub Release；发现新版本后打开下载页，不会静默安装。
-- 外观支持跟随系统、浅色和深色，选择会应用到主窗口、设置、更新窗口与菜单栏界面。
+- 软件更新通过 Sparkle 检查官方更新源。发现新版本后由你确认安装；安装完成后应用会重新打开。
+- 外观支持跟随系统、浅色和深色，选择会应用到主窗口、设置与菜单栏界面。
 
 ## 安全边界
 
@@ -190,7 +190,7 @@ Tunnelful 会先显示待执行命令。你可以只复制它；若要直接执�
 - remotely-managed Tunnel Token 与钥匙串工作流。
 - Cloudflare API、远程配置、Access 策略、私网路由与多主机副本管理。
 - `cloudflared` 自动安装或自动更新。
-- Developer ID 签名、Apple 公证与静默应用更新。
+- Developer ID 签名、Apple 公证与后台静默安装更新。
 
 ## 文档与支持
 
@@ -247,8 +247,8 @@ Tunnelful/
 
 ```bash
 bash scripts/build-release.sh
-bash scripts/verify-release.sh release/Tunnelful-0.1.1-arm64.dmg
-bash scripts/verify-release.sh release/Tunnelful-0.1.1-x86_64.dmg
+bash scripts/verify-release.sh release/Tunnelful-0.1.2-arm64.dmg release/appcast.xml
+bash scripts/verify-release.sh release/Tunnelful-0.1.2-x86_64.dmg release/appcast.xml
 ```
 
 发布脚本会分别构建 `arm64` 与 `x86_64` 应用，移除调试符号、应用 ad-hoc 签名并验证 DMG；它不会访问 Developer ID 证书，也不会执行 Apple 公证或上传产物。

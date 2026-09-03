@@ -60,5 +60,100 @@ final class EdgeLogInterpreterTests: XCTestCase {
         _ = interpreter.consume("Registered tunnel connection connIndex=0")
         interpreter.reset()
         XCTAssertEqual(interpreter.consume("starting cloudflared"), .connecting)
+        XCTAssertNil(interpreter.diagnostic)
+        XCTAssertFalse(interpreter.suggestsHTTP2Protocol)
+    }
+
+    func testUnregisteredIsNotTreatedAsRegistered() {
+        var interpreter = EdgeLogInterpreter()
+        XCTAssertEqual(interpreter.consume("INF Unregistered tunnel connection connIndex=0"), .connecting)
+        XCTAssertEqual(
+            interpreter.consume("INF Registered tunnel connection connIndex=0 location=sjc"),
+            .connected
+        )
+        XCTAssertEqual(interpreter.consume("INF Unregistered tunnel connection connIndex=0"), .degraded)
+    }
+
+    func testRegisteringDoesNotMarkConnected() {
+        var interpreter = EdgeLogInterpreter()
+        XCTAssertEqual(interpreter.consume("DBG Registering tunnel connection connIndex=0"), .connecting)
+    }
+
+    func testLegacyConnectionUUIDRegisteredMarksConnected() {
+        var interpreter = EdgeLogInterpreter()
+        XCTAssertEqual(
+            interpreter.consume(
+                "INF Connection 55d8e7e4-aaaa-bbbb-cccc-ddddeeeeffff registered connIndex=0 location=DFW"
+            ),
+            .connected
+        )
+        XCTAssertEqual(interpreter.consume("INF Connection registered connIndex=1"), .connected)
+    }
+
+    func testPrecheckHardFailMarksUnreachable() {
+        var interpreter = EdgeLogInterpreter()
+        XCTAssertEqual(
+            interpreter.consume(
+                "2026-09-03T08:51:44Z INF precheck complete hard_fail=true run_id=00000000-0000-4000-8000-000000000000"
+            ),
+            .unreachable
+        )
+        XCTAssertEqual(
+            interpreter.consume(#"{"message":"precheck complete","hard_fail":true,"run_id":"abc"}"#),
+            .unreachable
+        )
+        XCTAssertNotNil(interpreter.diagnostic)
+    }
+
+    func testQUICTimeoutAloneStaysConnectingUntilHTTP2Fails() {
+        var interpreter = EdgeLogInterpreter()
+        XCTAssertEqual(
+            interpreter.consume(
+                #"ERR Failed to dial a quic connection error="failed to dial to edge with quic: timeout: no recent network activity" connIndex=0 event=0 ip=198.41.192.107"#
+            ),
+            .connecting
+        )
+        XCTAssertTrue(interpreter.suggestsHTTP2Protocol)
+        XCTAssertNotNil(interpreter.diagnostic)
+
+        XCTAssertEqual(
+            interpreter.consume("INF Switching to fallback protocol http2 connIndex=0 event=0 ip=198.41.192.167"),
+            .connecting
+        )
+
+        XCTAssertEqual(
+            interpreter.consume(
+                #"ERR Unable to establish connection with Cloudflare edge error="TLS handshake with edge error: EOF" connIndex=0 event=0 ip=198.41.200.53"#
+            ),
+            .unreachable
+        )
+        XCTAssertTrue(interpreter.diagnostic?.contains("QUIC") == true)
+        XCTAssertTrue(interpreter.diagnostic?.contains("HTTP/2") == true)
+    }
+
+    func testUserLogSequenceNeverRegisters() {
+        var interpreter = EdgeLogInterpreter()
+        let lines = [
+            "2026-09-03T08:51:44Z INF precheck complete hard_fail=true run_id=00000000-0000-4000-8000-000000000000",
+            #"2026-09-03T08:51:44Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: timeout: no recent network activity" connIndex=0 event=0 ip=198.41.192.107"#,
+            "2026-09-03T08:51:44Z INF Retrying connection in up to 4s connIndex=0 event=0 ip=198.41.192.107",
+            "2026-09-03T08:53:55Z INF Switching to fallback protocol http2 connIndex=0 event=0 ip=198.41.192.167",
+            #"2026-09-03T08:53:56Z ERR Unable to establish connection with Cloudflare edge error="TLS handshake with edge error: EOF" connIndex=0 event=0 ip=198.41.200.53"#,
+            #"2026-09-03T08:53:56Z ERR Serve tunnel error error="TLS handshake with edge error: EOF" connIndex=0 event=0 ip=198.41.200.53"#
+        ]
+
+        var last: EdgeConnectionState = .unknown
+        for line in lines {
+            last = interpreter.consume(line)
+        }
+        XCTAssertEqual(last, .unreachable)
+        XCTAssertFalse(lines.contains(where: { $0.localizedCaseInsensitiveContains("Registered tunnel connection") }))
+    }
+
+    func testSuccessfulRegistrationAfterFailuresClearsUnreachable() {
+        var interpreter = EdgeLogInterpreter()
+        _ = interpreter.consume("INF precheck complete hard_fail=true run_id=abc")
+        XCTAssertEqual(interpreter.consume("INF Registered tunnel connection connIndex=0 location=sjc"), .connected)
+        XCTAssertNil(interpreter.diagnostic)
     }
 }

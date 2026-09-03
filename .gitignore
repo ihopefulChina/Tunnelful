@@ -10,6 +10,8 @@
 .env
 .env.*
 !.env.example
+sparkle-ed-private.key
+*.ed25519
 /.cloudflared/
 /cert.pem
 /config.yml

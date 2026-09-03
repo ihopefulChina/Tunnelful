@@ -12,9 +12,18 @@ Tunnelful 与 Cloudflare 提供的官方 `cloudflared` 命令行程序互操作�
 
 如未来版本开始捆绑 `cloudflared`，发布流程必须同时提供对应版本、许可证文本、版权声明、来源和完整性校验信息。
 
+## Sparkle
+
+Tunnelful 使用 [Sparkle](https://github.com/sparkle-project/Sparkle) 在应用内检查并安装更新。
+
+- 许可：MIT License
+- 版本：2.9.2
+- 更新源：`https://ihopefulchina.github.io/Tunnelful/appcast.xml`
+- 边界：Sparkle 只用于应用自身更新，不参与 Cloudflare Tunnel 或 `cloudflared` 的安装。
+
 ## macOS 应用
 
-macOS 应用使用 Swift、SwiftUI、AppKit、Foundation、Combine 与 Uniform Type Identifiers 等 Apple 平台 SDK。当前应用目标没有声明额外的第三方 Swift Package 依赖。
+macOS 应用使用 Swift、SwiftUI、AppKit、Foundation、Combine 与 Uniform Type Identifiers 等 Apple 平台 SDK。
 
 Apple、macOS、Swift、SwiftUI、AppKit 及相关名称和标识归其各自权利人所有。
 

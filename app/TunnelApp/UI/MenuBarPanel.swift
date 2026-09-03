@@ -5,6 +5,7 @@ struct MenuBarPanel: View {
     @Environment(\.openSettings) private var openSettings
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var process: TunnelProcessController
+    @EnvironmentObject private var updater: AppUpdater
 
     var body: some View {
         Group {
@@ -62,12 +63,11 @@ struct MenuBarPanel: View {
             }
 
             Button {
-                ApplicationActivation.openWindow {
-                    openWindow(id: "updates")
-                }
+                updater.checkForUpdates()
             } label: {
                 Label("检查更新…", systemImage: "arrow.triangle.2.circlepath")
             }
+            .disabled(!updater.canCheckForUpdates)
 
             Button {
                 ApplicationActivation.openWindow {
@@ -111,6 +111,7 @@ struct MenuBarPanel: View {
         switch (process.processState, process.edgeState) {
         case (.running, .connected): return "已连接 Cloudflare Edge"
         case (.running, .degraded): return "运行中，正在重连 Edge"
+        case (.running, .unreachable): return "无法连接 Cloudflare Edge"
         case (.running, .connecting): return "正在连接 Cloudflare Edge"
         case (.running, _): return "Tunnel 运行中"
         case (.starting, _): return "Tunnel 启动中"
@@ -122,7 +123,8 @@ struct MenuBarPanel: View {
     private var statusSymbol: String {
         switch (process.processState, process.edgeState) {
         case (.running, .connected): return "checkmark.circle"
-        case (.running, .degraded), (.failed, _): return "exclamationmark.triangle"
+        case (.running, .degraded), (.running, .unreachable), (.failed, _):
+            return "exclamationmark.triangle"
         case (.running, _), (.starting, _): return "arrow.clockwise.circle"
         default: return "stop.circle"
         }

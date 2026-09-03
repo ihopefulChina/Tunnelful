@@ -95,6 +95,34 @@ enum EdgeConnectionState: String, Equatable, Sendable {
     case connecting = "连接中"
     case connected = "已连接"
     case degraded = "重连中"
+    case unreachable = "无法连接"
+}
+
+enum TunnelTransportProtocol: String, CaseIterable, Identifiable, Sendable {
+    case auto
+    case http2
+    case quic
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .auto: return "自动（先 QUIC）"
+        case .http2: return "HTTP/2（TCP 7844）"
+        case .quic: return "QUIC（UDP 7844）"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .auto:
+            return "先尝试 QUIC。若 UDP 被拦截，cloudflared 会自行回退到 HTTP/2，但可能要等一两分钟。"
+        case .http2:
+            return "跳过 QUIC，直接走 TCP。适合公司网、防火墙或运营商拦截 UDP 7844 的环境。"
+        case .quic:
+            return "只用 QUIC。UDP 被拦截时不会回退到 HTTP/2。"
+        }
+    }
 }
 
 enum OriginReachabilityState: Equatable, Sendable {

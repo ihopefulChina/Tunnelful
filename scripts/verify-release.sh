@@ -5,8 +5,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "$script_dir/.." && pwd)"
 release_version_file="$project_root/VERSION"
 
-if [[ $# -ne 1 ]]; then
-  echo '用法：scripts/verify-release.sh <Tunnelful.dmg>' >&2
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+  echo '用法：scripts/verify-release.sh <Tunnelful.dmg> [appcast.xml]' >&2
   exit 1
 fi
 
@@ -37,7 +37,25 @@ case "$dmg_name" in
     ;;
 esac
 
-for command_name in codesign grep hdiutil lipo plutil shasum; do
+appcast_path="${2:-}"
+if [[ -n "$appcast_path" ]]; then
+  if [[ ! -f "$appcast_path" ]]; then
+    echo "更新源不存在：$appcast_path" >&2
+    exit 1
+  fi
+  appcast_path="$(cd "$(dirname "$appcast_path")" && pwd)/$(basename "$appcast_path")"
+fi
+
+product_config="$project_root/app/Config/Product.xcconfig"
+base_build="$(sed -nE 's/^[[:space:]]*CURRENT_PROJECT_VERSION[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"
+sparkle_feed_url='https://ihopefulchina.github.io/Tunnelful/appcast.xml'
+sparkle_public_key='0hyxOLR9zBFNvSdozSz0hALE/wHrk72Vsad4KxqpyM0='
+case "$expected_architecture" in
+  arm64) expected_build="$base_build" ;;
+  x86_64) expected_build="$((base_build - 1))" ;;
+esac
+
+for command_name in codesign file grep hdiutil lipo plutil shasum; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     echo "缺少验证命令：$command_name" >&2
     exit 1
@@ -46,9 +64,13 @@ done
 
 mount_dir="$(mktemp -d -t tunnelful-verify)"
 device=''
+sparkle_key_file=''
 cleanup() {
   if [[ -n "$device" ]]; then
     hdiutil detach "$device" -quiet || true
+  fi
+  if [[ -n "${sparkle_key_file:-}" && -f "$sparkle_key_file" ]]; then
+    rm -f "$sparkle_key_file"
   fi
   if [[ -n "${mount_dir:-}" && "$mount_dir" == */tunnelful-verify.* && -d "$mount_dir" ]]; then
     rmdir "$mount_dir" 2>/dev/null || true
@@ -125,8 +147,43 @@ if [[ "$bundle_version" != "$expected_bundle_version" ]]; then
 fi
 
 build_version="$(plutil -extract CFBundleVersion raw "$info_plist")"
-if [[ ! "$build_version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
-  echo "CFBundleVersion 不符合 Apple 版本格式：$build_version" >&2
+if [[ "$build_version" != "$expected_build" ]]; then
+  echo "CFBundleVersion 不符合预期；预期 $expected_build，实际 $build_version。" >&2
+  exit 1
+fi
+
+feed_url="$(plutil -extract SUFeedURL raw "$info_plist")"
+if [[ "$feed_url" != "$sparkle_feed_url" ]]; then
+  echo "SUFeedURL 不符合预期：$feed_url" >&2
+  exit 1
+fi
+public_key="$(plutil -extract SUPublicEDKey raw "$info_plist")"
+if [[ "$public_key" != "$sparkle_public_key" ]]; then
+  echo 'SUPublicEDKey 与发布用公钥不一致。' >&2
+  exit 1
+fi
+if plutil -extract SUEnableInstallerLauncherService raw "$info_plist" >/dev/null 2>&1; then
+  echo '非沙盒应用不应启用 Sparkle 安装器 XPC。' >&2
+  exit 1
+fi
+
+macho_count=0
+while IFS= read -r -d $'\0' candidate; do
+  description="$(file -b "$candidate")"
+  if [[ "$description" == Mach-O* ]]; then
+    slices="$(lipo -archs "$candidate" 2>/dev/null)" || {
+      echo "无法读取 Mach-O 架构：$candidate" >&2
+      exit 1
+    }
+    if [[ "$slices" != "$expected_architecture" ]]; then
+      echo "预期 $candidate 仅包含 $expected_architecture，实际为：$slices" >&2
+      exit 1
+    fi
+    macho_count=$((macho_count + 1))
+  fi
+done < <(find "$app_path" -type f -print0)
+if (( macho_count == 0 )); then
+  echo '应用中没有 Mach-O 文件。' >&2
   exit 1
 fi
 
@@ -206,6 +263,72 @@ case "$sensitive_scan_status" in
     ;;
 esac
 
+if [[ -n "$appcast_path" ]]; then
+  if ! command -v xmllint >/dev/null 2>&1; then
+    echo '验证 Sparkle 更新源需要 xmllint。' >&2
+    exit 1
+  fi
+  item_xpath="//*[local-name()='item' and *[local-name()='version' and text()='$expected_build']]"
+  item_count="$(xmllint --xpath "count($item_xpath)" "$appcast_path")"
+  if [[ "$item_count" != "1" ]]; then
+    echo "更新源必须恰好包含内部版本 $expected_build 的一条记录。" >&2
+    exit 1
+  fi
+  declared_length="$(xmllint --xpath "string($item_xpath/*[local-name()='enclosure']/@length)" "$appcast_path")"
+  signature="$(xmllint --xpath "string($item_xpath/*[local-name()='enclosure']/@*[local-name()='edSignature'])" "$appcast_path")"
+  download_url="$(xmllint --xpath "string($item_xpath/*[local-name()='enclosure']/@url)" "$appcast_path")"
+  short_version="$(xmllint --xpath "string($item_xpath/*[local-name()='shortVersionString'])" "$appcast_path")"
+  hardware_requirements="$(xmllint --xpath "string($item_xpath/*[local-name()='hardwareRequirements'])" "$appcast_path")"
+  if [[ "$short_version" != "$expected_bundle_version" ]]; then
+    echo "更新源中的短版本与应用版本不一致。" >&2
+    exit 1
+  fi
+  if [[ "${download_url##*/}" != "$dmg_name" ]]; then
+    echo "更新源未指向 $dmg_name。" >&2
+    exit 1
+  fi
+  if [[ "$declared_length" != "$(stat -f %z "$dmg_path")" ]]; then
+    echo "更新源声明的文件大小与磁盘映像不一致。" >&2
+    exit 1
+  fi
+  if [[ -z "$signature" ]]; then
+    echo '更新源缺少 Sparkle 签名。' >&2
+    exit 1
+  fi
+  hardware_requirements_normalized="$(printf '%s' "$hardware_requirements" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$expected_architecture" == "arm64" ]]; then
+    if [[ "$hardware_requirements_normalized" != "arm64" ]]; then
+      echo 'Apple 芯片条目必须声明 sparkle:hardwareRequirements=arm64。' >&2
+      exit 1
+    fi
+  elif [[ -n "$hardware_requirements" ]]; then
+    echo 'Intel 条目不应声明 hardwareRequirements。' >&2
+    exit 1
+  fi
+  if [[ -n "${TUNNELFUL_SPARKLE_ED_PRIVATE_KEY:-}" || -n "${TUNNELFUL_SPARKLE_ED_KEY_FILE:-}" ]]; then
+    sign_update="${TUNNELFUL_SPARKLE_SIGN_UPDATE:-}"
+    if [[ -z "$sign_update" && -x "$project_root/release/.sparkle-bin/sign_update" ]]; then
+      sign_update="$project_root/release/.sparkle-bin/sign_update"
+    fi
+    if [[ -z "$sign_update" ]]; then
+      sign_update="$(find /tmp/tunnelful-sparkle-2.9.2 "$project_root" -name sign_update -type f 2>/dev/null | head -n 1)"
+    fi
+    if [[ ! -x "$sign_update" ]]; then
+      echo '无法验证 Sparkle 签名：找不到 sign_update。' >&2
+      exit 1
+    fi
+    sparkle_key_file="$(mktemp -t tunnelful-sparkle-verify)"
+    if [[ -n "${TUNNELFUL_SPARKLE_ED_KEY_FILE:-}" ]]; then
+      cat "$TUNNELFUL_SPARKLE_ED_KEY_FILE" > "$sparkle_key_file"
+    else
+      printf '%s\n' "$TUNNELFUL_SPARKLE_ED_PRIVATE_KEY" > "$sparkle_key_file"
+    fi
+    chmod 600 "$sparkle_key_file"
+    "$sign_update" --verify --ed-key-file "$sparkle_key_file" "$dmg_path" "$signature"
+  fi
+fi
+
 echo "验证通过：$(basename "$dmg_path")"
 echo "应用架构：$expected_architecture"
+echo "内部版本：$expected_build"
 echo '签名类型：ad-hoc；Apple 公证：未执行。'

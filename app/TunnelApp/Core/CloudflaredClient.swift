@@ -58,8 +58,15 @@ struct CloudflaredClient: Sendable {
         return SensitiveLogRedactor().redact(output).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    func runArguments(tunnel: String, configURL: URL?) -> [String] {
+    func runArguments(
+        tunnel: String,
+        configURL: URL?,
+        transportProtocol: TunnelTransportProtocol = .auto
+    ) -> [String] {
         var arguments = ["tunnel"]
+        if transportProtocol != .auto {
+            arguments += ["--protocol", transportProtocol.rawValue]
+        }
         if let configURL {
             arguments += ["--config", configURL.path]
         }

@@ -132,14 +132,14 @@ struct TunnelAppMain: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var processController: TunnelProcessController
     @StateObject private var model: AppModel
-    @StateObject private var updateChecker: UpdateChecker
+    @StateObject private var updater: AppUpdater
 
     init() {
         let controller = TunnelProcessController()
         let appModel = AppModel(processController: controller)
         _processController = StateObject(wrappedValue: controller)
         _model = StateObject(wrappedValue: appModel)
-        _updateChecker = StateObject(wrappedValue: UpdateChecker(currentVersion: AppIdentity.releaseVersion))
+        _updater = StateObject(wrappedValue: AppUpdater())
         appDelegate.processController = controller
         appDelegate.loginController = appModel.loginController
         appDelegate.model = appModel
@@ -150,21 +150,21 @@ struct TunnelAppMain: App {
             RootView()
                 .environmentObject(model)
                 .environmentObject(processController)
-                .environmentObject(updateChecker)
+                .environmentObject(updater)
                 .frame(minWidth: 980, minHeight: 680)
                 .task { await model.bootstrap() }
         }
         .defaultSize(width: 1_120, height: 780)
         .windowStyle(.hiddenTitleBar)
         .commands {
-            TunnelfulCommands(model: model)
+            TunnelfulCommands(model: model, updater: updater)
         }
 
         MenuBarExtra {
             MenuBarPanel()
                 .environmentObject(model)
                 .environmentObject(processController)
-                .environmentObject(updateChecker)
+                .environmentObject(updater)
         } label: {
             Image(systemName: menuBarSymbol)
                 .symbolRenderingMode(.monochrome)
@@ -175,22 +175,16 @@ struct TunnelAppMain: App {
         Settings {
             SettingsView()
                 .environmentObject(model)
-                .environmentObject(updateChecker)
-                .frame(width: 600, height: 560)
+                .environmentObject(updater)
+                .frame(width: 600, height: 620)
         }
-
-        Window("软件更新", id: "updates") {
-            UpdateView()
-                .environmentObject(updateChecker)
-        }
-        .windowResizability(.contentSize)
     }
 
     private var menuBarSymbol: String {
         switch (processController.processState, processController.edgeState) {
         case (.running, .connected): return "point.3.filled.connected.trianglepath.dotted"
+        case (.running, .unreachable), (.failed, _): return "exclamationmark.triangle"
         case (.running, _): return "point.3.connected.trianglepath.dotted"
-        case (.failed, _): return "exclamationmark.triangle"
         default: return "point.3.connected.trianglepath.dotted"
         }
     }
@@ -198,6 +192,7 @@ struct TunnelAppMain: App {
 
 private struct TunnelfulCommands: Commands {
     @ObservedObject var model: AppModel
+    @ObservedObject var updater: AppUpdater
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
@@ -207,7 +202,10 @@ private struct TunnelfulCommands: Commands {
         }
 
         CommandGroup(after: .appInfo) {
-            OpenUpdatesCommand()
+            Button("检查更新…") {
+                updater.checkForUpdates()
+            }
+            .disabled(!updater.canCheckForUpdates)
         }
 
         CommandGroup(after: .appSettings) {
@@ -236,18 +234,6 @@ private struct TunnelfulCommands: Commands {
 
         SidebarCommands()
         ToolbarCommands()
-    }
-}
-
-private struct OpenUpdatesCommand: View {
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Button("检查更新…") {
-            ApplicationActivation.openWindow {
-                openWindow(id: "updates")
-            }
-        }
     }
 }
 

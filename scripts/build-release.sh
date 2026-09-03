@@ -39,6 +39,32 @@ if [[ "$configured_release_version" != "$version" ]]; then
   exit 1
 fi
 
+base_build="$(sed -nE 's/^[[:space:]]*CURRENT_PROJECT_VERSION[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"
+if [[ ! "$base_build" =~ ^[0-9]+$ ]] || (( base_build < 5 )) || (( base_build % 2 == 0 )); then
+  echo "CURRENT_PROJECT_VERSION 必须是大于等于 5 的奇数，以便 Apple 芯片与 Intel 使用成对且不冲突的内部版本号。" >&2
+  exit 1
+fi
+arm64_build="$base_build"
+x86_64_build="$((base_build - 1))"
+sparkle_feed_url='https://ihopefulchina.github.io/Tunnelful/appcast.xml'
+sparkle_public_key='0hyxOLR9zBFNvSdozSz0hALE/wHrk72Vsad4KxqpyM0='
+release_notes_path="$project_root/.github/release-notes/$version.md"
+if [[ ! -f "$release_notes_path" ]]; then
+  echo "缺少发布说明：$release_notes_path" >&2
+  exit 1
+fi
+
+build_number_for_architecture() {
+  case "$1" in
+    arm64) printf '%s\n' "$arm64_build" ;;
+    x86_64) printf '%s\n' "$x86_64_build" ;;
+    *)
+      echo "不支持的发布架构：$1" >&2
+      exit 1
+      ;;
+  esac
+}
+
 if [[ $# -gt 1 ]]; then
   echo '用法：scripts/build-release.sh [输出目录]' >&2
   exit 1
@@ -61,13 +87,68 @@ trap cleanup EXIT
 app_name='Tunnelful.app'
 release_architectures=(arm64 x86_64)
 
+assert_thin_macho_tree() {
+  local root="$1"
+  local expected_architecture="$2"
+  local candidate description slices
+  local macho_count=0
+
+  while IFS= read -r -d $'\0' candidate; do
+    description="$(file -b "$candidate")"
+    if [[ "$description" == Mach-O* ]]; then
+      slices="$(lipo -archs "$candidate" 2>/dev/null)" || {
+        echo "无法读取 Mach-O 架构：$candidate" >&2
+        exit 1
+      }
+      if [[ "$slices" != "$expected_architecture" ]]; then
+        echo "预期 $candidate 仅包含 $expected_architecture，实际为：$slices" >&2
+        exit 1
+      fi
+      macho_count=$((macho_count + 1))
+    fi
+  done < <(find "$root" -type f -print0)
+
+  if (( macho_count == 0 )); then
+    echo "$root 中没有 Mach-O 文件。" >&2
+    exit 1
+  fi
+}
+
+write_sparkle_info_keys() {
+  local info_plist="$1"
+  local key value
+  local -a pairs=(
+    SUFeedURL "$sparkle_feed_url"
+    SUPublicEDKey "$sparkle_public_key"
+  )
+  local index
+  for (( index = 0; index < ${#pairs[@]}; index += 2 )); do
+    key="${pairs[index]}"
+    value="${pairs[index + 1]}"
+    if plutil -extract "$key" raw "$info_plist" >/dev/null 2>&1; then
+      plutil -replace "$key" -string "$value" "$info_plist"
+    else
+      plutil -insert "$key" -string "$value" "$info_plist"
+    fi
+  done
+  for key in SUEnableAutomaticChecks SUVerifyUpdateBeforeExtraction; do
+    if plutil -extract "$key" raw "$info_plist" >/dev/null 2>&1; then
+      plutil -replace "$key" -bool true "$info_plist"
+    else
+      plutil -insert "$key" -bool true "$info_plist"
+    fi
+  done
+}
+
 build_release_for_architecture() {
   local architecture="$1"
   local architecture_name
+  local build_number
   local derived_data="$work_dir/DerivedData-$architecture"
   local stage_dir="$work_dir/stage-$architecture"
   local dmg_name="Tunnelful-$version-$architecture.dmg"
   local sha_name="$dmg_name.sha256"
+  build_number="$(build_number_for_architecture "$architecture")"
 
   case "$architecture" in
     arm64) architecture_name='Apple 芯片' ;;
@@ -78,16 +159,17 @@ build_release_for_architecture() {
       ;;
   esac
 
-  echo "构建 Tunnelful ${version}（${architecture_name} / ${architecture}）…"
+  echo "构建 Tunnelful ${version}（${architecture_name} / ${architecture}，内部版本 ${build_number}）…"
   xcodebuild \
     -quiet \
     -project "$project_root/app/TunnelApp.xcodeproj" \
     -scheme TunnelApp \
     -configuration Release \
-    -destination 'generic/platform=macOS' \
+    -destination "platform=macOS,arch=$architecture" \
     -derivedDataPath "$derived_data" \
     ARCHS="$architecture" \
-    ONLY_ACTIVE_ARCH=NO \
+    ONLY_ACTIVE_ARCH=YES \
+    CURRENT_PROJECT_VERSION="$build_number" \
     CODE_SIGNING_ALLOWED=NO \
     TUNNELFUL_RELEASE_VERSION="$version" \
     build
@@ -117,25 +199,48 @@ build_release_for_architecture() {
   fi
 
   mkdir -p "$stage_dir"
-  ditto "$built_app" "$stage_dir/$app_name"
+  ditto --arch "$architecture" "$built_app" "$stage_dir/$app_name"
   ditto "$project_root/LICENSE" "$stage_dir/LICENSE"
   ditto "$project_root/THIRD_PARTY_NOTICES.md" "$stage_dir/THIRD_PARTY_NOTICES.md"
   ln -s /Applications "$stage_dir/Applications"
 
+  local staged_info="$stage_dir/$app_name/Contents/Info.plist"
+  write_sparkle_info_keys "$staged_info"
+  if plutil -extract TunnelfulReleaseVersion raw "$staged_info" >/dev/null 2>&1; then
+    plutil -replace TunnelfulReleaseVersion -string "$version" "$staged_info"
+  else
+    plutil -insert TunnelfulReleaseVersion -string "$version" "$staged_info"
+  fi
+
+  local actual_build actual_feed actual_public_key
+  actual_build="$(plutil -extract CFBundleVersion raw "$staged_info")"
+  if [[ "$actual_build" != "$build_number" ]]; then
+    echo "$architecture 内部版本 $actual_build 与预期 $build_number 不一致。" >&2
+    exit 1
+  fi
+  actual_feed="$(plutil -extract SUFeedURL raw "$staged_info")"
+  actual_public_key="$(plutil -extract SUPublicEDKey raw "$staged_info")"
+  if [[ "$actual_feed" != "$sparkle_feed_url" ]]; then
+    echo "$architecture 应用 Sparkle 源地址不符合预期：$actual_feed" >&2
+    exit 1
+  fi
+  if [[ "$actual_public_key" != "$sparkle_public_key" ]]; then
+    echo "$architecture 应用 Sparkle 公钥不符合预期。" >&2
+    exit 1
+  fi
+  if plutil -extract SUEnableInstallerLauncherService raw "$staged_info" >/dev/null 2>&1; then
+    echo "非沙盒应用不应启用 Sparkle 安装器 XPC。" >&2
+    exit 1
+  fi
+
   local binary="$stage_dir/$app_name/Contents/MacOS/Tunnelful"
-  echo "移除 $architecture 发布二进制中的调试符号与本机构建路径…"
+  echo "移除 $architecture 主程序中的调试符号与本机构建路径…"
   strip -S -x "$binary"
+  assert_thin_macho_tree "$stage_dir/$app_name" "$architecture"
 
   echo "为 $architecture 应用 ad-hoc 签名…"
   codesign --force --deep --sign - --timestamp=none --options runtime "$stage_dir/$app_name"
   codesign --verify --deep --strict --verbose=2 "$stage_dir/$app_name"
-
-  local actual_architecture
-  actual_architecture="$(lipo -archs "$binary")"
-  if [[ "$actual_architecture" != "$architecture" ]]; then
-    echo "发布二进制架构不符合预期；预期 $architecture，实际 $actual_architecture。" >&2
-    exit 1
-  fi
 
   rm -f "$output_dir/$dmg_name" "$output_dir/$sha_name"
   hdiutil create \
@@ -158,5 +263,65 @@ build_release_for_architecture() {
 for release_architecture in "${release_architectures[@]}"; do
   build_release_for_architecture "$release_architecture"
 done
+
+generate_sparkle_appcast() {
+  local sparkle_dir generate_appcast private_key_path appcast_dir
+  local arm64_dmg x86_64_dmg
+  sparkle_dir="$work_dir/DerivedData-arm64/SourcePackages/artifacts/sparkle/Sparkle"
+  generate_appcast="$sparkle_dir/bin/generate_appcast"
+  if [[ ! -x "$generate_appcast" ]]; then
+    generate_appcast="$(find "$work_dir/DerivedData-arm64/SourcePackages" -name generate_appcast -type f 2>/dev/null | head -n 1)"
+  fi
+  arm64_dmg="$output_dir/Tunnelful-$version-arm64.dmg"
+  x86_64_dmg="$output_dir/Tunnelful-$version-x86_64.dmg"
+
+  if [[ -z "${TUNNELFUL_SPARKLE_ED_PRIVATE_KEY:-}" && -z "${TUNNELFUL_SPARKLE_ED_KEY_FILE:-}" ]]; then
+    echo '未提供 Sparkle 私钥，已跳过 appcast。磁盘映像仍可发布；更新源可在之后用同一对密钥补签。'
+    return 0
+  fi
+  if [[ ! -x "$generate_appcast" ]]; then
+    echo "找不到 Sparkle generate_appcast。" >&2
+    exit 1
+  fi
+
+  private_key_path="$work_dir/sparkle-ed-private.key"
+  if [[ -n "${TUNNELFUL_SPARKLE_ED_KEY_FILE:-}" ]]; then
+    ditto "$TUNNELFUL_SPARKLE_ED_KEY_FILE" "$private_key_path"
+  else
+    printf '%s\n' "$TUNNELFUL_SPARKLE_ED_PRIVATE_KEY" > "$private_key_path"
+  fi
+  chmod 600 "$private_key_path"
+
+  appcast_dir="$work_dir/appcast"
+  mkdir -p "$appcast_dir"
+  ditto "$arm64_dmg" "$appcast_dir/Tunnelful-$version-arm64.dmg"
+  ditto "$x86_64_dmg" "$appcast_dir/Tunnelful-$version-x86_64.dmg"
+  ditto "$release_notes_path" "$appcast_dir/Tunnelful-$version-arm64.md"
+  ditto "$release_notes_path" "$appcast_dir/Tunnelful-$version-x86_64.md"
+  if [[ -f "$project_root/appcast.xml" ]]; then
+    ditto "$project_root/appcast.xml" "$appcast_dir/appcast.xml"
+  fi
+
+  "$generate_appcast" \
+    --ed-key-file "$private_key_path" \
+    --download-url-prefix "https://github.com/ihopefulChina/Tunnelful/releases/download/v$version/" \
+    --link "https://github.com/ihopefulChina/Tunnelful/releases/tag/v$version" \
+    --versions "$x86_64_build,$arm64_build" \
+    --embed-release-notes \
+    --maximum-deltas 0 \
+    "$appcast_dir"
+
+  ditto "$appcast_dir/appcast.xml" "$output_dir/appcast.xml"
+  ditto "$appcast_dir/appcast.xml" "$project_root/appcast.xml"
+  mkdir -p "$project_root/website/public" "$output_dir/.sparkle-bin"
+  ditto "$appcast_dir/appcast.xml" "$project_root/website/public/appcast.xml"
+  sign_update="${generate_appcast%generate_appcast}sign_update"
+  if [[ -x "$sign_update" ]]; then
+    ditto "$sign_update" "$output_dir/.sparkle-bin/sign_update"
+  fi
+  echo "Sparkle 更新源：$output_dir/appcast.xml"
+}
+
+generate_sparkle_appcast
 
 echo '注意：此发布包仅为 ad-hoc 签名，未使用 Developer ID，也未经过 Apple 公证。'

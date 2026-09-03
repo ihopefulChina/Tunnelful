@@ -85,6 +85,9 @@ final class AppModel: ObservableObject {
     @Published var startTunnelOnLaunch: Bool {
         didSet { userDefaults.set(startTunnelOnLaunch, forKey: Self.startTunnelOnLaunchKey) }
     }
+    @Published var transportProtocol: TunnelTransportProtocol {
+        didSet { userDefaults.set(transportProtocol.rawValue, forKey: Self.transportProtocolKey) }
+    }
 
     let processController: TunnelProcessController
     let loginController: CloudflaredLoginController
@@ -92,6 +95,7 @@ final class AppModel: ObservableObject {
     private static let appearanceKey = "appearance"
     private static let preferredExecutablePathKey = "preferredExecutablePath"
     private static let startTunnelOnLaunchKey = "startTunnelOnLaunch"
+    private static let transportProtocolKey = "transportProtocol"
 
     private let detector: CloudflaredExecutableDetector
     private let locator: ConfigurationLocator
@@ -140,6 +144,9 @@ final class AppModel: ObservableObject {
         launchAtLoginState = launchAtLoginManager.currentState()
         configurationDraft = nil
         startTunnelOnLaunch = userDefaults.bool(forKey: Self.startTunnelOnLaunchKey)
+        transportProtocol = TunnelTransportProtocol(
+            rawValue: userDefaults.string(forKey: Self.transportProtocolKey) ?? ""
+        ) ?? .auto
         if let path = userDefaults.string(forKey: Self.preferredExecutablePathKey), !path.isEmpty {
             preferredExecutableURL = URL(fileURLWithPath: path).standardizedFileURL
         }
@@ -721,7 +728,11 @@ final class AppModel: ObservableObject {
             let client = CloudflaredClient(installation: installation)
             try processController.start(
                 executableURL: installation.executableURL,
-                arguments: client.runArguments(tunnel: name, configURL: selectedConfigURL)
+                arguments: client.runArguments(
+                    tunnel: name,
+                    configURL: selectedConfigURL,
+                    transportProtocol: transportProtocol
+                )
             )
         } catch {
             alertMessage = error.localizedDescription
@@ -754,10 +765,25 @@ final class AppModel: ObservableObject {
         do {
             try processController.restart(
                 executableURL: installation.executableURL,
-                arguments: client.runArguments(tunnel: name, configURL: selectedConfigURL)
+                arguments: client.runArguments(
+                    tunnel: name,
+                    configURL: selectedConfigURL,
+                    transportProtocol: transportProtocol
+                )
             )
         } catch {
             alertMessage = error.localizedDescription
+        }
+    }
+
+    func retryTunnelUsingHTTP2() {
+        transportProtocol = .http2
+        guard let name = preferredTunnelName else { return }
+        switch processController.processState {
+        case .running, .starting:
+            restartTunnel(named: name)
+        default:
+            startTunnel(named: name)
         }
     }
 

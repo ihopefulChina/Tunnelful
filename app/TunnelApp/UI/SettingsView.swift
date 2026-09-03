@@ -1,9 +1,8 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var model: AppModel
-    @EnvironmentObject private var updateChecker: UpdateChecker
+    @EnvironmentObject private var updater: AppUpdater
 
     var body: some View {
         Form {
@@ -43,6 +42,18 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Edge 连接协议") {
+                Picker("传输协议", selection: $model.transportProtocol) {
+                    ForEach(TunnelTransportProtocol.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                Text(model.transportProtocol.description)
+                    .foregroundStyle(.secondary)
+                Text("更改后会在下次启动或重新启动 Tunnel 时生效。")
+                    .foregroundStyle(.secondary)
+            }
+
             Section("cloudflared") {
                 KeyValueRow(key: "可执行文件", value: model.installation?.executableURL.path ?? "未检测到")
                 KeyValueRow(key: "版本", value: model.installation?.version ?? "未知")
@@ -61,19 +72,18 @@ struct SettingsView: View {
                     .disabled(model.isApplyingConfiguration || model.isRoutingDNS)
             }
 
-            Section("软件更新") {
-                KeyValueRow(key: "当前版本", value: AppIdentity.releaseVersion)
-                LabeledContent {
-                    Button("检查更新…") {
-                        ApplicationActivation.openWindow {
-                            openWindow(id: "updates")
-                        }
-                    }
-                } label: {
-                    Text(updateSummary)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+            Section("更新") {
+                LabeledContent("当前版本", value: AppIdentity.releaseVersion)
+                Toggle("自动检查更新", isOn: Binding(
+                    get: { updater.automaticallyChecksForUpdates },
+                    set: { updater.automaticallyChecksForUpdates = $0 }
+                ))
+                Button("检查更新…") {
+                    updater.checkForUpdates()
                 }
+                .disabled(!updater.canCheckForUpdates)
+                Text("发现新版本后会显示官方安装界面；安装完成后 Tunnelful 会重新打开。")
+                    .foregroundStyle(.secondary)
             }
 
             Section("安全") {
@@ -85,20 +95,5 @@ struct SettingsView: View {
         .navigationTitle("设置")
         .padding(12)
         .onAppear { model.refreshLaunchAtLoginState() }
-    }
-
-    private var updateSummary: String {
-        switch updateChecker.state {
-        case .idle:
-            return "仅在主动检查时联网"
-        case .checking:
-            return "正在连接 GitHub…"
-        case .upToDate:
-            return "已是最新版本"
-        case let .updateAvailable(release):
-            return "新版本 \(release.version) 可用"
-        case .failed:
-            return "上次检查失败"
-        }
     }
 }

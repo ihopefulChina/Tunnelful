@@ -7,9 +7,15 @@ let package = Package(
     products: [
         .executable(name: "TunnelApp", targets: ["TunnelApp"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.2")
+    ],
     targets: [
         .executableTarget(
             name: "TunnelApp",
+            dependencies: [
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
             path: "TunnelApp",
             exclude: ["Assets.xcassets"]
         ),

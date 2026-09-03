@@ -3,7 +3,7 @@ import Image from 'next/image';
 import DownloadChooser from './DownloadChooser';
 
 const repositoryURL = 'https://github.com/ihopefulChina/Tunnelful';
-const releasesURL = `${repositoryURL}/releases/tag/v0.1.1`;
+const releasesURL = `${repositoryURL}/releases/tag/v0.1.2`;
 
 const basePath = process.env.TUNNELFUL_PAGES === '1' ? '/Tunnelful' : '';
 
@@ -44,9 +44,9 @@ const features = [
   },
   {
     label: '更新',
-    title: '新版本，由你决定何时安装。',
+    title: '新版本，在应用内安装。',
     description:
-      '在应用内检查正式 GitHub Release；发现更新后，由你确认并打开官方下载页。',
+      '用 Sparkle 检查官方更新源。发现新版本后由你确认，安装完成后会重新打开 Tunnelful。',
   },
 ];
 
@@ -152,7 +152,7 @@ export default function Home() {
         />
         <h2 id="download-title">让 Tunnel 回到 Mac 的使用方式。</h2>
         <p>免费、开源。分别为 Apple 芯片与 Intel Mac 提供原生安装包。</p>
-        <a className="button button-primary" href="#downloads">选择 Tunnelful 0.1.1</a>
+        <a className="button button-primary" href="#downloads">选择 Tunnelful 0.1.2</a>
         <a className="release-link" href={releasesURL}>查看发布说明</a>
       </section>
 

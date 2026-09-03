@@ -36,6 +36,53 @@ final class CommandAndParserTests: XCTestCase {
         XCTAssertEqual(AppAppearance.allCases.map(\.title), ["跟随系统", "浅色", "深色"])
     }
 
+    @MainActor
+    func testTransportProtocolDefaultsToAutoAndPersistsSelection() {
+        let suiteName = "app.tunnelful.mac.tests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            return XCTFail("无法创建隔离的 UserDefaults。")
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let firstModel = AppModel(
+            processController: TunnelProcessController(),
+            userDefaults: defaults
+        )
+        XCTAssertEqual(firstModel.transportProtocol, .auto)
+
+        firstModel.transportProtocol = .http2
+
+        let restoredModel = AppModel(
+            processController: TunnelProcessController(),
+            userDefaults: defaults
+        )
+        XCTAssertEqual(restoredModel.transportProtocol, .http2)
+    }
+
+    func testRunArgumentsOmitProtocolWhenAutoAndInsertFlagOtherwise() {
+        let installation = CloudflaredInstallation(
+            executableURL: URL(fileURLWithPath: "/usr/local/bin/cloudflared"),
+            version: "2026.1.0",
+            source: .custom
+        )
+        let client = CloudflaredClient(installation: installation)
+        let config = URL(fileURLWithPath: "/tmp/config.yml")
+
+        XCTAssertEqual(
+            client.runArguments(tunnel: "dev", configURL: config, transportProtocol: .auto),
+            ["tunnel", "--config", config.path, "run", "dev"]
+        )
+        XCTAssertEqual(
+            client.runArguments(tunnel: "dev", configURL: config, transportProtocol: .http2),
+            ["tunnel", "--protocol", "http2", "--config", config.path, "run", "dev"]
+        )
+        XCTAssertEqual(
+            client.runArguments(tunnel: "dev", configURL: nil, transportProtocol: .quic),
+            ["tunnel", "--protocol", "quic", "run", "dev"]
+        )
+    }
+
     func testCommandRunnerPassesArgumentsWithoutShellExpansion() async throws {
         let marker = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: marker) }
