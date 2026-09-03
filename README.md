@@ -30,9 +30,9 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="website/public/tunnelful-window-dark-v0.1.0.png" />
-    <source media="(prefers-color-scheme: light)" srcset="website/public/tunnelful-window-v0.1.0.png" />
-    <img src="website/public/tunnelful-window-v0.1.0.png" alt="Tunnelful 原生 macOS 主窗口，分别展示本地进程、Cloudflare Edge 与源站状态" width="1120" />
+    <source media="(prefers-color-scheme: dark)" srcset="website/public/tunnelful-window-dark-v0.1.2.png" />
+    <source media="(prefers-color-scheme: light)" srcset="website/public/tunnelful-window-v0.1.2.png" />
+    <img src="website/public/tunnelful-window-v0.1.2.png" alt="Tunnelful 原生 macOS 主窗口，分别展示本地进程、Cloudflare Edge 与源站状态" width="1120" />
   </picture>
 </p>
 

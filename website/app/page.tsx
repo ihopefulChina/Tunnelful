@@ -1,6 +1,7 @@
 import Image from 'next/image';
 
 import DownloadChooser from './DownloadChooser';
+import ThemeToggle from './ThemeToggle';
 
 const repositoryURL = 'https://github.com/ihopefulChina/Tunnelful';
 const releasesURL = `${repositoryURL}/releases/tag/v0.1.2`;
@@ -61,6 +62,7 @@ export default function Home() {
           <div className="nav-links">
             <a href="#features">功能</a>
             <a href={repositoryURL}>GitHub</a>
+            <ThemeToggle />
             <a className="nav-download" href="#downloads">下载</a>
           </div>
         </nav>
@@ -82,21 +84,24 @@ export default function Home() {
         </div>
 
         <figure className="product-figure">
-          <picture className="product-picture">
-            <source
-              media="(prefers-color-scheme: dark)"
-              srcSet={`${basePath}/tunnelful-window-dark-v0.1.0.png`}
-            />
-            <Image
-              className="product-image"
-              src={`${basePath}/tunnelful-window-v0.1.0.png`}
-              width={2240}
-              height={1560}
-              alt="Tunnelful 原生主窗口：左侧为功能导航，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
-              priority
-              unoptimized
-            />
-          </picture>
+          <Image
+            className="product-image product-image-light"
+            src={`${basePath}/tunnelful-window-v0.1.2.png`}
+            width={2240}
+            height={1560}
+            alt="Tunnelful 浅色主窗口：左侧为功能导航，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
+            priority
+            unoptimized
+          />
+          <Image
+            className="product-image product-image-dark"
+            src={`${basePath}/tunnelful-window-dark-v0.1.2.png`}
+            width={2240}
+            height={1560}
+            alt="Tunnelful 深色主窗口：左侧为功能导航，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
+            priority
+            unoptimized
+          />
           <figcaption>
             一个原生窗口，集中查看状态、Tunnel、发布、Ingress 配置、环境与日志。
           </figcaption>

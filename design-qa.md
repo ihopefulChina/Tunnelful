@@ -4,7 +4,7 @@
 - 浅色实现：`design/actual-app.png`
 - 深色实现：`design/actual-app-dark.png`
 - 实现截图：2240 × 1560 px，标准 sRGB
-- 验证状态：概览页、Tunnel 已停止
+- 验证状态：概览页、Tunnel 运行中
 
 ## 当前界面
 
