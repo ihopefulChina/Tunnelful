@@ -1,0 +1,308 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		010000000000000000000001 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000001 /* Models.swift */; };
+		010000000000000000000002 /* CommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000002 /* CommandRunner.swift */; };
+		010000000000000000000003 /* ExecutableDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000003 /* ExecutableDetector.swift */; };
+		010000000000000000000004 /* TunnelListParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000004 /* TunnelListParser.swift */; };
+		010000000000000000000005 /* LogRedactor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000005 /* LogRedactor.swift */; };
+		010000000000000000000006 /* Configuration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000006 /* Configuration.swift */; };
+		010000000000000000000007 /* ConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000007 /* ConfigurationStore.swift */; };
+		010000000000000000000008 /* CloudflaredClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000008 /* CloudflaredClient.swift */; };
+		010000000000000000000009 /* TunnelProcessController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000009 /* TunnelProcessController.swift */; };
+		01000000000000000000000A /* OriginHealthChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02000000000000000000000A /* OriginHealthChecker.swift */; };
+		01000000000000000000000B /* TunnelAppMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02000000000000000000000B /* TunnelAppMain.swift */; };
+		01000000000000000000000C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02000000000000000000000C /* AppModel.swift */; };
+		01000000000000000000000D /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02000000000000000000000D /* Components.swift */; };
+		01000000000000000000000E /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02000000000000000000000E /* RootView.swift */; };
+		01000000000000000000000F /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02000000000000000000000F /* OverviewView.swift */; };
+		010000000000000000000010 /* TunnelsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000010 /* TunnelsView.swift */; };
+		010000000000000000000011 /* PublishView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000011 /* PublishView.swift */; };
+		010000000000000000000012 /* ConfigurationEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000012 /* ConfigurationEditorView.swift */; };
+		010000000000000000000013 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000013 /* LogsView.swift */; };
+		010000000000000000000014 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000014 /* SettingsView.swift */; };
+		010000000000000000000015 /* MenuBarPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000015 /* MenuBarPanel.swift */; };
+		010000000000000000000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000016 /* Assets.xcassets */; };
+		010000000000000000000017 /* CommandAndParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000017 /* CommandAndParserTests.swift */; };
+		010000000000000000000018 /* ConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000018 /* ConfigurationTests.swift */; };
+		010000000000000000000019 /* ProcessControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000019 /* ProcessControllerTests.swift */; };
+		01000000000000000000001A /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02000000000000000000001D /* UpdateChecker.swift */; };
+		01000000000000000000001B /* UpdateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02000000000000000000001E /* UpdateView.swift */; };
+		01000000000000000000001C /* UpdateCheckerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02000000000000000000001F /* UpdateCheckerTests.swift */; };
+		01000000000000000000001D /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000020 /* LaunchAtLoginManager.swift */; };
+		01000000000000000000001E /* EnvironmentInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000021 /* EnvironmentInspector.swift */; };
+		01000000000000000000001F /* CloudflaredLoginController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000022 /* CloudflaredLoginController.swift */; };
+		010000000000000000000020 /* EnvironmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000023 /* EnvironmentView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		030000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 080000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 070000000000000000000001;
+			remoteInfo = TunnelApp;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		020000000000000000000001 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		020000000000000000000002 /* CommandRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandRunner.swift; sourceTree = "<group>"; };
+		020000000000000000000003 /* ExecutableDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExecutableDetector.swift; sourceTree = "<group>"; };
+		020000000000000000000004 /* TunnelListParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelListParser.swift; sourceTree = "<group>"; };
+		020000000000000000000005 /* LogRedactor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogRedactor.swift; sourceTree = "<group>"; };
+		020000000000000000000006 /* Configuration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Configuration.swift; sourceTree = "<group>"; };
+		020000000000000000000007 /* ConfigurationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationStore.swift; sourceTree = "<group>"; };
+		020000000000000000000008 /* CloudflaredClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflaredClient.swift; sourceTree = "<group>"; };
+		020000000000000000000009 /* TunnelProcessController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelProcessController.swift; sourceTree = "<group>"; };
+		02000000000000000000000A /* OriginHealthChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginHealthChecker.swift; sourceTree = "<group>"; };
+		02000000000000000000000B /* TunnelAppMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelAppMain.swift; sourceTree = "<group>"; };
+		02000000000000000000000C /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		02000000000000000000000D /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
+		02000000000000000000000E /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		02000000000000000000000F /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
+		020000000000000000000010 /* TunnelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelsView.swift; sourceTree = "<group>"; };
+		020000000000000000000011 /* PublishView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishView.swift; sourceTree = "<group>"; };
+		020000000000000000000012 /* ConfigurationEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationEditorView.swift; sourceTree = "<group>"; };
+		020000000000000000000013 /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
+		020000000000000000000014 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		020000000000000000000015 /* MenuBarPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPanel.swift; sourceTree = "<group>"; };
+		020000000000000000000016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		020000000000000000000017 /* CommandAndParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandAndParserTests.swift; sourceTree = "<group>"; };
+		020000000000000000000018 /* ConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationTests.swift; sourceTree = "<group>"; };
+		020000000000000000000019 /* ProcessControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessControllerTests.swift; sourceTree = "<group>"; };
+		02000000000000000000001A /* Product.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Product.xcconfig; sourceTree = "<group>"; };
+		02000000000000000000001B /* Tunnelful.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tunnelful.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		02000000000000000000001C /* TunnelAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TunnelAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		02000000000000000000001D /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
+		02000000000000000000001E /* UpdateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateView.swift; sourceTree = "<group>"; };
+		02000000000000000000001F /* UpdateCheckerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateCheckerTests.swift; sourceTree = "<group>"; };
+		020000000000000000000020 /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
+		020000000000000000000021 /* EnvironmentInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentInspector.swift; sourceTree = "<group>"; };
+		020000000000000000000022 /* CloudflaredLoginController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflaredLoginController.swift; sourceTree = "<group>"; };
+		020000000000000000000023 /* EnvironmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		040000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		040000000000000000000002 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		050000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				050000000000000000000002 /* TunnelApp */,
+				050000000000000000000005 /* TunnelAppTests */,
+				050000000000000000000006 /* Config */,
+				050000000000000000000007 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		050000000000000000000002 /* TunnelApp */ = {
+			isa = PBXGroup;
+			children = (
+				02000000000000000000000B /* TunnelAppMain.swift */,
+				050000000000000000000003 /* Core */,
+				050000000000000000000004 /* UI */,
+				020000000000000000000016 /* Assets.xcassets */,
+			);
+			path = TunnelApp;
+			sourceTree = "<group>";
+		};
+		050000000000000000000003 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				020000000000000000000001 /* Models.swift */,
+				02000000000000000000001D /* UpdateChecker.swift */,
+				020000000000000000000020 /* LaunchAtLoginManager.swift */,
+				020000000000000000000021 /* EnvironmentInspector.swift */,
+				020000000000000000000022 /* CloudflaredLoginController.swift */,
+				020000000000000000000002 /* CommandRunner.swift */,
+				020000000000000000000003 /* ExecutableDetector.swift */,
+				020000000000000000000004 /* TunnelListParser.swift */,
+				020000000000000000000005 /* LogRedactor.swift */,
+				020000000000000000000006 /* Configuration.swift */,
+				020000000000000000000007 /* ConfigurationStore.swift */,
+				020000000000000000000008 /* CloudflaredClient.swift */,
+				020000000000000000000009 /* TunnelProcessController.swift */,
+				02000000000000000000000A /* OriginHealthChecker.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		050000000000000000000004 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				02000000000000000000000C /* AppModel.swift */,
+				02000000000000000000000D /* Components.swift */,
+				02000000000000000000000E /* RootView.swift */,
+				02000000000000000000000F /* OverviewView.swift */,
+				020000000000000000000010 /* TunnelsView.swift */,
+				020000000000000000000011 /* PublishView.swift */,
+				020000000000000000000012 /* ConfigurationEditorView.swift */,
+				020000000000000000000013 /* LogsView.swift */,
+				020000000000000000000014 /* SettingsView.swift */,
+				02000000000000000000001E /* UpdateView.swift */,
+				020000000000000000000023 /* EnvironmentView.swift */,
+				020000000000000000000015 /* MenuBarPanel.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		050000000000000000000005 /* TunnelAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				020000000000000000000017 /* CommandAndParserTests.swift */,
+				020000000000000000000018 /* ConfigurationTests.swift */,
+				020000000000000000000019 /* ProcessControllerTests.swift */,
+				02000000000000000000001F /* UpdateCheckerTests.swift */,
+			);
+			path = TunnelAppTests;
+			sourceTree = "<group>";
+		};
+		050000000000000000000006 /* Config */ = {
+			isa = PBXGroup;
+			children = (02000000000000000000001A /* Product.xcconfig */);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		050000000000000000000007 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				02000000000000000000001B /* Tunnelful.app */,
+				02000000000000000000001C /* TunnelAppTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		070000000000000000000001 /* TunnelApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0A0000000000000000000002 /* Build configuration list for PBXNativeTarget "TunnelApp" */;
+			buildPhases = (
+				060000000000000000000001 /* Sources */,
+				040000000000000000000001 /* Frameworks */,
+				060000000000000000000002 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = TunnelApp;
+			productName = TunnelApp;
+			productReference = 02000000000000000000001B /* Tunnelful.app */;
+			productType = "com.apple.product-type.application";
+		};
+		070000000000000000000002 /* TunnelAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0A0000000000000000000003 /* Build configuration list for PBXNativeTarget "TunnelAppTests" */;
+			buildPhases = (
+				060000000000000000000003 /* Sources */,
+				040000000000000000000002 /* Frameworks */,
+				060000000000000000000004 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = (0B0000000000000000000001 /* PBXTargetDependency */);
+			name = TunnelAppTests;
+			productName = TunnelAppTests;
+			productReference = 02000000000000000000001C /* TunnelAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		080000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					070000000000000000000001 = {CreatedOnToolsVersion = 26.6;};
+					070000000000000000000002 = {CreatedOnToolsVersion = 26.6; TestTargetID = 070000000000000000000001;};
+				};
+			};
+			buildConfigurationList = 0A0000000000000000000001 /* Build configuration list for PBXProject "TunnelApp" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = "zh-Hans";
+			hasScannedForEncodings = 0;
+			knownRegions = ("zh-Hans", Base);
+			mainGroup = 050000000000000000000001;
+			productRefGroup = 050000000000000000000007 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				070000000000000000000001 /* TunnelApp */,
+				070000000000000000000002 /* TunnelAppTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		060000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (010000000000000000000016 /* Assets.xcassets in Resources */);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		060000000000000000000004 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		060000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				010000000000000000000001, 010000000000000000000002, 010000000000000000000003,
+				010000000000000000000004, 010000000000000000000005, 010000000000000000000006,
+				010000000000000000000007, 010000000000000000000008, 010000000000000000000009,
+				01000000000000000000000A, 01000000000000000000000B, 01000000000000000000000C,
+				01000000000000000000000D, 01000000000000000000000E, 01000000000000000000000F,
+				010000000000000000000010, 010000000000000000000011, 010000000000000000000012,
+				010000000000000000000013, 010000000000000000000014, 010000000000000000000015,
+				01000000000000000000001A, 01000000000000000000001B,
+				01000000000000000000001D, 01000000000000000000001E,
+				01000000000000000000001F, 010000000000000000000020,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		060000000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				010000000000000000000017,
+				010000000000000000000018,
+				010000000000000000000019,
+				01000000000000000000001C,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		0B0000000000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 070000000000000000000001 /* TunnelApp */; targetProxy = 030000000000000000000001 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		090000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_OPTIMIZATION_LEVEL = 0; ONLY_ACTIVE_ARCH = YES; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;}; name = Debug; };
+		090000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; SWIFT_COMPILATION_MODE = wholemodule; VALIDATE_PRODUCT = YES;}; name = Release; };
+		090000000000000000000003 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = 02000000000000000000001A /* Product.xcconfig */; buildSettings = {CODE_SIGN_STYLE = Automatic; ENABLE_HARDENED_RUNTIME = NO;}; name = Debug; };
+		090000000000000000000004 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = 02000000000000000000001A /* Product.xcconfig */; buildSettings = {CODE_SIGN_STYLE = Automatic;}; name = Release; };
+		090000000000000000000005 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_BUNDLE_IDENTIFIER = app.tunnelful.mac.tests; PRODUCT_NAME = TunnelAppTests; SWIFT_VERSION = 5.0; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Tunnelful.app/Contents/MacOS/Tunnelful";}; name = Debug; };
+		090000000000000000000006 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_BUNDLE_IDENTIFIER = app.tunnelful.mac.tests; PRODUCT_NAME = TunnelAppTests; SWIFT_VERSION = 5.0; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Tunnelful.app/Contents/MacOS/Tunnelful";}; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0A0000000000000000000001 /* Build configuration list for PBXProject "TunnelApp" */ = {isa = XCConfigurationList; buildConfigurations = (090000000000000000000001, 090000000000000000000002); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		0A0000000000000000000002 /* Build configuration list for PBXNativeTarget "TunnelApp" */ = {isa = XCConfigurationList; buildConfigurations = (090000000000000000000003, 090000000000000000000004); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		0A0000000000000000000003 /* Build configuration list for PBXNativeTarget "TunnelAppTests" */ = {isa = XCConfigurationList; buildConfigurations = (090000000000000000000005, 090000000000000000000006); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = 080000000000000000000001 /* Project object */;
+}

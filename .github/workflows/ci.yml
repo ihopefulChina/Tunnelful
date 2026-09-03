@@ -1,0 +1,77 @@
+name: 持续集成
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  public-content:
+    name: 公开内容检查
+    runs-on: ubuntu-latest
+    env:
+      TUNNELFUL_PRIVATE_SCAN_PATTERN: ${{ secrets.TUNNELFUL_PRIVATE_SCAN_PATTERN }}
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v6
+      - name: 检查敏感内容
+        run: bash scripts/check-public-content.sh
+
+  macos-app:
+    name: macOS 应用（${{ matrix.architecture }}）
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [arm64, x86_64]
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v6
+      - name: 运行 Swift 单元测试
+        run: swift test --package-path app
+      - name: 构建并验证单架构应用
+        run: |
+          xcodebuild \
+            -quiet \
+            -project app/TunnelApp.xcodeproj \
+            -scheme TunnelApp \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/TunnelfulDerivedData-${{ matrix.architecture }}" \
+            ARCHS='${{ matrix.architecture }}' \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          binary="$RUNNER_TEMP/TunnelfulDerivedData-${{ matrix.architecture }}/Build/Products/Release/Tunnelful.app/Contents/MacOS/Tunnelful"
+          actual_architecture="$(lipo -archs "$binary")"
+          if [[ "$actual_architecture" != '${{ matrix.architecture }}' ]]; then
+            echo "应用架构不符合预期：$actual_architecture" >&2
+            exit 1
+          fi
+
+  website:
+    name: 中文官网
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v6
+      - name: 配置 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: 安装锁定依赖
+        run: npm ci --prefix website
+      - name: 检查网站代码
+        run: npm run --prefix website lint
+      - name: 构建 GitHub Pages 版本
+        run: npm run --prefix website build:pages

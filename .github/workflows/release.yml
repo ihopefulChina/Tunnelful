@@ -1,0 +1,90 @@
+name: 发布 macOS 应用
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: 构建并发布
+    runs-on: macos-15
+    env:
+      TUNNELFUL_PRIVATE_SCAN_PATTERN: ${{ secrets.TUNNELFUL_PRIVATE_SCAN_PATTERN }}
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: 校验标签与版本
+        id: version
+        shell: bash
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          if [[ -z "$version" ]]; then
+            echo '未能从 VERSION 读取发布版本。' >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "标签 $GITHUB_REF_NAME 与应用版本 v$version 不一致。" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: 检查公开内容
+        run: bash scripts/check-public-content.sh
+      - name: 运行 Swift 单元测试
+        run: swift test --package-path app
+      - name: 构建 ad-hoc 签名磁盘映像
+        run: bash scripts/build-release.sh
+      - name: 验证发布产物
+        run: |
+          bash scripts/verify-release.sh "release/Tunnelful-${{ steps.version.outputs.version }}-arm64.dmg"
+          bash scripts/verify-release.sh "release/Tunnelful-${{ steps.version.outputs.version }}-x86_64.dmg"
+      - name: 保存 Apple 芯片工作流产物
+        uses: actions/upload-artifact@v7
+        with:
+          name: Tunnelful-${{ steps.version.outputs.version }}-arm64
+          path: |
+            release/Tunnelful-${{ steps.version.outputs.version }}-arm64.dmg
+            release/Tunnelful-${{ steps.version.outputs.version }}-arm64.dmg.sha256
+          if-no-files-found: error
+      - name: 保存 Intel 工作流产物
+        uses: actions/upload-artifact@v7
+        with:
+          name: Tunnelful-${{ steps.version.outputs.version }}-x86_64
+          path: |
+            release/Tunnelful-${{ steps.version.outputs.version }}-x86_64.dmg
+            release/Tunnelful-${{ steps.version.outputs.version }}-x86_64.dmg.sha256
+          if-no-files-found: error
+      - name: 创建 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          notes=".github/release-notes/$VERSION.md"
+          if [[ ! -f "$notes" ]]; then
+            echo "缺少发布说明：$notes" >&2
+            exit 1
+          fi
+          release_title="Tunnelful $VERSION"
+          release_flags=()
+          if [[ "$VERSION" == *-* ]]; then
+            release_title="$release_title 预览版"
+            release_flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            "release/Tunnelful-$VERSION-arm64.dmg#Tunnelful Apple 芯片磁盘映像" \
+            "release/Tunnelful-$VERSION-arm64.dmg.sha256#Apple 芯片 SHA-256 校验文件" \
+            "release/Tunnelful-$VERSION-x86_64.dmg#Tunnelful Intel 磁盘映像" \
+            "release/Tunnelful-$VERSION-x86_64.dmg.sha256#Intel SHA-256 校验文件" \
+            --verify-tag \
+            "${release_flags[@]}" \
+            --title "$release_title" \
+            --notes-file "$notes"

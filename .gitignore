@@ -1,0 +1,50 @@
+# macOS 与编辑器
+.DS_Store
+.AppleDouble
+*.swp
+*.tmp
+.idea/
+.vscode/
+
+# 本机环境与凭据
+.env
+.env.*
+!.env.example
+/.cloudflared/
+/cert.pem
+/config.yml
+/config.yaml
+*.p12
+*.cer
+*.mobileprovision
+
+# Swift / Xcode
+/.build/
+/app/.build/
+/DerivedData/
+/app/DerivedData/
+*.xcuserstate
+**/xcuserdata/
+*.xccheckout
+
+# 产品网站
+/.next/
+/dist/
+/next-env.d.ts
+/website/node_modules/
+/website/dist/
+/website/.next/
+/website/.vinext/
+/website/.wrangler/
+/website/.turbo/
+/website/*.tsbuildinfo
+
+# 发布产物与日志
+/release/
+/artifacts/
+*.dmg
+*.log
+
+# 本地设计参考（可能包含用户路径或真实运行信息）
+/design/references/
+/design/final-direction*.png
