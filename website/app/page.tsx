@@ -3,7 +3,7 @@ import Image from 'next/image';
 import DownloadChooser from './DownloadChooser';
 
 const repositoryURL = 'https://github.com/ihopefulChina/Tunnelful';
-const releasesURL = `${repositoryURL}/releases/tag/v0.1.0`;
+const releasesURL = `${repositoryURL}/releases/tag/v0.1.1`;
 
 const basePath = process.env.TUNNELFUL_PAGES === '1' ? '/Tunnelful' : '';
 
@@ -34,7 +34,7 @@ const features = [
     label: '状态',
     title: '进程、Edge 与源站各自可见。',
     description:
-      '不再用一个绿色圆点概括所有问题。连接正常，不代表本地服务一定可达。',
+      '本地进程、Cloudflare Edge 与源站分开显示。Edge 按仍注册的连接判断，单条重连不等于隧道断开。',
   },
   {
     label: '常驻',
@@ -69,7 +69,7 @@ export default function Home() {
       <section className="hero" aria-labelledby="hero-title">
         <p className="eyebrow">macOS 菜单栏工具</p>
         <h1 id="hero-title">
-          把 Cloudflare Tunnel，
+          <span>把 Cloudflare Tunnel，</span>
           <span>交给一个真正的 Mac 应用。</span>
         </h1>
         <p className="hero-description">
@@ -152,7 +152,7 @@ export default function Home() {
         />
         <h2 id="download-title">让 Tunnel 回到 Mac 的使用方式。</h2>
         <p>免费、开源。分别为 Apple 芯片与 Intel Mac 提供原生安装包。</p>
-        <a className="button button-primary" href="#downloads">选择 Tunnelful 0.1.0</a>
+        <a className="button button-primary" href="#downloads">选择 Tunnelful 0.1.1</a>
         <a className="release-link" href={releasesURL}>查看发布说明</a>
       </section>
 

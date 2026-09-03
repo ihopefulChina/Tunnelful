@@ -431,38 +431,6 @@ final class CommandAndParserTests: XCTestCase {
         XCTAssertFalse(output.contains("CLOUDFLARED_"))
     }
 
-    func testPrivacyMaskerHidesStructuredConfigurationValues() {
-        let input = """
-        tunnel: sample-tunnel-id
-        credentials-file: $HOME/.cloudflared/credentials.json
-        ingress:
-          - hostname: preview.example.com
-            service: http://127.0.0.1:3000
-          - service: http_status:404
-        """
-        let result = PrivacyMasker().yaml(input)
-
-        XCTAssertFalse(result.contains("sample-tunnel-id"))
-        XCTAssertFalse(result.contains("preview.example.com"))
-        XCTAssertFalse(result.contains("127.0.0.1"))
-        XCTAssertTrue(result.contains("http_status:404"))
-        XCTAssertEqual(PrivacyMasker().identifier("example-tunnel-identifier"), "••••••••")
-    }
-
-    func testPrivacyMaskerHidesServiceWhenItStartsAListRule() {
-        let input = """
-        ingress:
-          - service: http://private-origin.internal:8080
-          - service: 'http_status:404'
-          - service: "http_status:503"
-        """
-
-        let result = PrivacyMasker().yaml(input)
-
-        XCTAssertFalse(result.contains("private-origin.internal"))
-        XCTAssertTrue(result.contains("http_status:404"))
-        XCTAssertTrue(result.contains("http_status:503"))
-    }
 }
 
 private struct DetectorStubRunner: CommandRunning {

@@ -347,7 +347,7 @@ final class ConfigurationTests: XCTestCase {
     }
 
     @MainActor
-    func testPrivacyDisplayMasksDraftAndFailedPublishValuesWithoutHidingRawDiagnostics() async throws {
+    func testFailedPublishSurfacesValidationDetails() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -358,7 +358,7 @@ final class ConfigurationTests: XCTestCase {
         let publishHostname = "private-publish.example.com"
         let publishService = "private-invalid-service"
         let failureMessage = "Validation failed for \(publishHostname): \(publishService) is invalid"
-        let defaultsName = "app.tunnelful.mac.privacy-tests.\(UUID().uuidString)"
+        let defaultsName = "app.tunnelful.mac.publish-failure-tests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
         defer { defaults.removePersistentDomain(forName: defaultsName) }
         let model = AppModel(
@@ -368,16 +368,6 @@ final class ConfigurationTests: XCTestCase {
             userDefaults: defaults
         )
         model.importConfiguration(at: configURL)
-
-        var draft = try XCTUnwrap(model.configurationDraft)
-        let draftHostname = "private-draft.example.com"
-        let draftService = "http://127.0.0.1:9876"
-        draft.upsert(hostname: draftHostname, service: draftService)
-        model.configurationDraft = draft
-        let draftDiagnostic = "Draft \(draftHostname) uses \(draftService)"
-        XCTAssertFalse(model.displayMessage(draftDiagnostic).contains(draftHostname))
-        XCTAssertFalse(model.displayMessage(draftDiagnostic).contains(draftService))
-
         model.discardConfigurationDraft()
         await model.applyLocalPublish(
             tunnelName: "sample",
@@ -388,17 +378,6 @@ final class ConfigurationTests: XCTestCase {
         let rawAlert = try XCTUnwrap(model.alertMessage)
         XCTAssertTrue(rawAlert.contains(publishHostname))
         XCTAssertTrue(rawAlert.contains(publishService))
-        let privateAlert = model.displayMessage(rawAlert)
-        XCTAssertFalse(privateAlert.contains(publishHostname))
-        XCTAssertFalse(privateAlert.contains(publishService))
-
-        model.privacyMode = false
-        XCTAssertEqual(model.displayMessage(rawAlert), rawAlert)
-
-        model.alertMessage = nil
-        model.privacyMode = true
-        XCTAssertTrue(model.displayMessage(rawAlert).contains(publishHostname))
-        XCTAssertTrue(model.displayMessage(rawAlert).contains(publishService))
     }
 
     @MainActor
@@ -426,18 +405,7 @@ final class ConfigurationTests: XCTestCase {
             service: "http://127.0.0.1:3000"
         )
         let plan = try XCTUnwrap(model.pendingDNSPlan)
-        XCTAssertFalse(model.displayDNSCommand(plan).contains("route.example.com"))
-
-        await model.routeDNS(plan)
-        XCTAssertEqual(
-            model.alertMessage,
-            "请先关闭截图隐私模式，核对真实的 Tunnel 与域名后再配置 DNS 路由。"
-        )
-        XCTAssertNil(model.lastDNSRouteMessage)
-
-        model.alertMessage = nil
-        model.privacyMode = false
-        XCTAssertEqual(model.displayDNSCommand(plan), plan.displayCommand)
+        XCTAssertTrue(plan.displayCommand.contains("route.example.com"))
 
         await model.routeDNS(plan)
 
@@ -487,7 +455,6 @@ final class ConfigurationTests: XCTestCase {
             service: "http://127.0.0.1:3000"
         )
         let plan = try XCTUnwrap(model.pendingDNSPlan)
-        model.privacyMode = false
 
         let externallyEdited = sample.replacingOccurrences(
             of: "dev.example.com",

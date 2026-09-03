@@ -27,8 +27,8 @@ struct TunnelsView: View {
                 Table(model.tunnels) {
                     TableColumn("名称") { tunnel in
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(displayName(for: tunnel)).fontWeight(.medium)
-                            Text(model.displayIdentifier(tunnel.id))
+                            Text(tunnel.name).fontWeight(.medium)
+                            Text(tunnel.id)
                                 .font(.caption.monospaced())
                                 .foregroundStyle(.tertiary)
                                 .textSelection(.enabled)
@@ -91,7 +91,7 @@ struct TunnelsView: View {
         case .loading:
             return "正在通过官方 cloudflared 检查账户连接。"
         case let .failed(message):
-            return model.displayMessage(message)
+            return message
         case let .loaded(count) where count == 0:
             return "账户连接有效，但当前没有命名 Tunnel；本地配置仍可继续导入和查看。"
         case .notChecked, .loaded:
@@ -107,13 +107,4 @@ struct TunnelsView: View {
         }
     }
 
-    private func displayName(for tunnel: CloudflaredTunnel) -> String {
-        guard model.privacyMode else { return tunnel.name }
-        let index = model.tunnels.firstIndex(where: { $0.id == tunnel.id }) ?? 0
-        switch index {
-        case 0: return "dev"
-        case 1: return "preview"
-        default: return "Tunnel \(index + 1)"
-        }
-    }
 }

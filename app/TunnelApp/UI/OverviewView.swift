@@ -10,7 +10,7 @@ struct OverviewView: View {
 
     private var displayedTunnelName: String {
         guard let runnableTunnel else { return "尚未选择 Tunnel" }
-        return model.privacyMode ? "示例 Tunnel" : runnableTunnel
+        return runnableTunnel
     }
 
     var body: some View {
@@ -32,7 +32,7 @@ struct OverviewView: View {
                     StatusTile(
                         title: "Cloudflare Edge",
                         value: process.edgeState.rawValue,
-                        detail: "根据本 App 管理的连接器实时日志判断。",
+                        detail: "按已注册的 Edge 连接判断；其中一条重连不等于隧道断开。",
                         symbol: edgeSymbol,
                         tint: edgeTint
                     )
@@ -62,7 +62,7 @@ struct OverviewView: View {
                     NoticeView(
                         kind: .success,
                         title: "配置校验通过",
-                        message: model.displayMessage(message)
+                        message: message
                     )
                 }
             }
@@ -140,7 +140,7 @@ struct OverviewView: View {
 
             VStack(spacing: 0) {
                 if let installation = model.installation {
-                    KeyValueRow(key: "可执行文件", value: model.displayPath(installation.executableURL.path))
+                    KeyValueRow(key: "可执行文件", value: installation.executableURL.path)
                         .padding(.vertical, 10)
                     Divider()
                     KeyValueRow(key: "版本", value: installation.version)
@@ -156,7 +156,7 @@ struct OverviewView: View {
                 Divider()
                 KeyValueRow(
                     key: "配置文件",
-                    value: model.selectedConfigURL.map { model.displayPath($0.path) } ?? "尚未导入"
+                    value: model.selectedConfigURL?.path ?? "尚未导入"
                 )
                 .padding(.vertical, 10)
             }
@@ -168,7 +168,7 @@ struct OverviewView: View {
 
     private var processDetail: String {
         if case let .running(pid) = process.processState {
-            return model.privacyMode ? "本 App 管理的进程正在运行。" : "本 App 管理的 PID \(pid)。"
+            return "本 App 管理的 PID \(pid)。"
         }
         return "此状态不代表系统中不存在其他后台服务。"
     }

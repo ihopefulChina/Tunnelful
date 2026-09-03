@@ -5,9 +5,9 @@ struct PublishView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var process: TunnelProcessController
 
-    @State private var tunnelName = "dev"
-    @State private var hostname = "preview.example.com"
-    @State private var service = "http://127.0.0.1:3000"
+    @State private var tunnelName = ""
+    @State private var hostname = ""
+    @State private var service = ""
     @State private var path = ""
     @State private var isShowingDNSConfirmation = false
 
@@ -36,19 +36,15 @@ struct PublishView: View {
         }
         .background(AppPalette.workspaceBackground)
         .onAppear {
-            if let preferred = model.preferredTunnelName {
-                tunnelName = preferred
-            }
+            applyDefaultsFromCurrentConfiguration()
+        }
+        .onChange(of: model.configDocument) { _, _ in
+            applyDefaultsFromCurrentConfiguration()
         }
         .onChange(of: tunnelName) { _, _ in model.invalidatePublishPlan() }
         .onChange(of: hostname) { _, _ in model.invalidatePublishPlan() }
         .onChange(of: service) { _, _ in model.invalidatePublishPlan() }
         .onChange(of: path) { _, _ in model.invalidatePublishPlan() }
-        .onDisappear {
-            if !model.isRoutingDNS {
-                model.invalidatePublishPlan()
-            }
-        }
     }
 
     private var tunnelSection: some View {
@@ -59,13 +55,10 @@ struct PublishView: View {
             if model.tunnels.isEmpty {
                 TextField("Tunnel 名称", text: $tunnelName, prompt: Text("dev"))
                     .textFieldStyle(.roundedBorder)
-                    .privacySensitive()
-                    .redacted(reason: model.privacyMode ? .privacy : [])
             } else {
                 Picker("Tunnel", selection: $tunnelName) {
-                    ForEach(Array(model.tunnels.enumerated()), id: \.element.id) { index, tunnel in
-                        Text(model.privacyMode ? safeTunnelName(index: index) : tunnel.name)
-                            .tag(tunnel.name)
+                    ForEach(model.tunnels) { tunnel in
+                        Text(tunnel.name).tag(tunnel.name)
                     }
                 }
                 .pickerStyle(.menu)
@@ -87,8 +80,6 @@ struct PublishView: View {
             Form {
                 TextField("域名", text: $hostname, prompt: Text("preview.example.com"))
                     .textContentType(.URL)
-                    .privacySensitive()
-                    .redacted(reason: model.privacyMode ? .privacy : [])
                 if let hostnameError {
                     Text(hostnameError)
                         .font(.caption)
@@ -97,8 +88,6 @@ struct PublishView: View {
 
                 TextField("本地源站", text: $service, prompt: Text("http://127.0.0.1:3000"))
                     .textContentType(.URL)
-                    .privacySensitive()
-                    .redacted(reason: model.privacyMode ? .privacy : [])
                 if let serviceError {
                     Text(serviceError)
                         .font(.caption)
@@ -106,8 +95,6 @@ struct PublishView: View {
                 }
 
                 TextField("路径匹配", text: $path, prompt: Text("可选，例如 ^/api/.*"))
-                    .privacySensitive()
-                    .redacted(reason: model.privacyMode ? .privacy : [])
             }
             .formStyle(.columns)
             .scrollDisabled(true)
@@ -136,15 +123,11 @@ struct PublishView: View {
         ) {
             VStack(alignment: .leading, spacing: 9) {
                 previewRow(label: "Ingress", value: "\(hostname) → \(service)")
-                    .privacySensitive()
-                    .redacted(reason: model.privacyMode ? .privacy : [])
                 previewRow(
                     label: "配置文件",
-                    value: model.selectedConfigURL.map { model.displayPath($0.path) } ?? "尚未导入配置"
+                    value: model.selectedConfigURL?.path ?? "尚未导入配置"
                 )
-                previewRow(label: "DNS 计划", value: model.displayDNSCommand(routePlan))
-                    .privacySensitive()
-                    .redacted(reason: model.privacyMode ? .privacy : [])
+                previewRow(label: "DNS 计划", value: routePlan.displayCommand)
             }
 
             HStack(spacing: 10) {
@@ -186,11 +169,7 @@ struct PublishView: View {
                     .disabled(model.isRoutingDNS)
 
                     Button {
-                        if model.privacyMode {
-                            model.alertMessage = "请先关闭截图隐私模式，核对真实的 Tunnel 与域名后再配置 DNS 路由。"
-                        } else {
-                            isShowingDNSConfirmation = true
-                        }
+                        isShowingDNSConfirmation = true
                     } label: {
                         if model.isRoutingDNS {
                             ProgressView()
@@ -210,7 +189,7 @@ struct PublishView: View {
                         }
                         Button("取消", role: .cancel) {}
                     } message: {
-                        Text("将执行 \(model.displayDNSCommand(plan))。这会在你的 Cloudflare 账户中创建 DNS CNAME 记录。")
+                        Text("将执行 \(plan.displayCommand)。这会在你的 Cloudflare 账户中创建 DNS CNAME 记录。")
                     }
                 }
 
@@ -228,11 +207,11 @@ struct PublishView: View {
                 NoticeView(
                     kind: .success,
                     title: "本地配置已就绪",
-                    message: model.displayMessage(message)
+                    message: message
                 )
             }
             if let backup = model.lastBackupURL {
-                Text("备份：\(model.displayPath(backup.path))")
+                Text("备份：\(backup.path)")
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
@@ -241,7 +220,7 @@ struct PublishView: View {
                 NoticeView(
                     kind: .success,
                     title: "DNS 路由已配置",
-                    message: model.displayMessage(message)
+                    message: message
                 )
             }
         }
@@ -280,7 +259,7 @@ struct PublishView: View {
 
     private var hostnameError: String? {
         let value = hostname.trimmingCharacters(in: .whitespacesAndNewlines)
-        if value.isEmpty { return "请输入域名。" }
+        if value.isEmpty { return nil }
         if value.contains("://") || value.contains(where: \.isWhitespace) {
             return "域名不要包含协议或空格。"
         }
@@ -291,13 +270,14 @@ struct PublishView: View {
 
     private var tunnelError: String? {
         let value = tunnelName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if value.isEmpty { return "请输入 Tunnel 名称。" }
+        if value.isEmpty { return nil }
         if value.hasPrefix("-") { return "Tunnel 名称不能以连字符开头。" }
         return nil
     }
 
     private var serviceError: String? {
         let value = service.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.isEmpty { return nil }
         guard let url = URL(string: value),
               let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https" else {
@@ -307,7 +287,12 @@ struct PublishView: View {
     }
 
     private var isFormValid: Bool {
-        tunnelError == nil && hostnameError == nil && serviceError == nil
+        !tunnelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !hostname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !service.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && tunnelError == nil
+            && hostnameError == nil
+            && serviceError == nil
     }
 
     private var originSymbol: String {
@@ -319,16 +304,28 @@ struct PublishView: View {
         }
     }
 
-    private func safeTunnelName(index: Int) -> String {
-        switch index {
-        case 0: return "dev"
-        case 1: return "preview"
-        default: return "Tunnel \(index + 1)"
-        }
-    }
-
     private func copy(_ value: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
+    }
+
+    private func applyDefaultsFromCurrentConfiguration() {
+        if tunnelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let preferred = model.preferredTunnelName {
+            tunnelName = preferred
+        }
+        if hostname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let firstHostname = model.configDocument?.ingress
+            .compactMap(\.hostname)
+            .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .first(where: { !$0.isEmpty }) {
+            hostname = firstHostname
+        }
+        if service.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let firstService = model.configDocument?.ingress
+            .first(where: { !$0.isCatchAll && !$0.service.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
+            .service {
+            service = firstService
+        }
     }
 }

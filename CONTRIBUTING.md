@@ -1,8 +1,8 @@
 # 贡献指南
 
-感谢你参与 Tunnelful。项目当前版本为 `0.1.0`，优先接受能够提升可靠性、安全性、可访问性和基础 Tunnel 工作流的聚焦改动。
+感谢你参与 Tunnelful。项目当前版本为 `0.1.1`，优先接受能够提升可靠性、安全性、可访问性和基础 Tunnel 工作流的聚焦改动。
 
-当前 `0.1.0` 构建流程分别生成 Apple 芯片 `arm64` 与 Intel `x86_64` 单架构应用。
+当前 `0.1.1` 构建流程分别生成 Apple 芯片 `arm64` 与 Intel `x86_64` 单架构应用。
 
 ## 开始之前
 
@@ -66,7 +66,7 @@ swift test --package-path app
 - 配置导入、校验失败、备份和保存。
 - 进程启动、停止、重启、异常退出和应用退出。
 - Edge 状态与源站状态互不混淆。
-- 日志、错误、复制内容和截图隐私模式不暴露秘密。
+- 日志、错误和复制内容不暴露令牌、凭据或用户绝对路径。
 - 菜单栏操作可用，主窗口关闭后仍能重新打开并正常退出。
 
 构建或静态检查通过不等于真实账号联调、签名、公证或发布验收通过。请在变更说明中列出已运行和未运行的检查。
@@ -84,8 +84,8 @@ npm run --prefix website build:pages
 
 ```bash
 bash scripts/build-release.sh
-bash scripts/verify-release.sh release/Tunnelful-0.1.0-arm64.dmg
-bash scripts/verify-release.sh release/Tunnelful-0.1.0-x86_64.dmg
+bash scripts/verify-release.sh release/Tunnelful-0.1.1-arm64.dmg
+bash scripts/verify-release.sh release/Tunnelful-0.1.1-x86_64.dmg
 ```
 
 发布脚本分别生成用于公开分发的 Apple 芯片与 Intel ad-hoc 签名包，不会执行 Developer ID 签名或 Apple 公证。

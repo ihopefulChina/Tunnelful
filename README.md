@@ -36,10 +36,10 @@
   </picture>
 </p>
 
-<p align="center"><sub>主窗口概览 · 截图使用示例数据与隐私遮罩</sub></p>
+<p align="center"><sub>主窗口概览 · 截图使用示例数据</sub></p>
 
 > [!IMPORTANT]
-> 当前源码版本为 `0.1.0`，可下载版本及其支持架构以 [GitHub Releases](https://github.com/ihopefulChina/Tunnelful/releases) 中的实际附件为准。目前公开安装包采用 ad-hoc 签名，尚未使用 Developer ID 签名或经过 Apple 公证。
+> 当前源码版本为 `0.1.1`，可下载版本及其支持架构以 [GitHub Releases](https://github.com/ihopefulChina/Tunnelful/releases) 中的实际附件为准。目前公开安装包采用 ad-hoc 签名，尚未使用 Developer ID 签名或经过 Apple 公证。
 
 ## 核心能力
 
@@ -56,9 +56,9 @@
 
 | 项目 | 当前支持 |
 | --- | --- |
-| 当前源码 | `0.1.0`；已发布版本见 [Releases](https://github.com/ihopefulChina/Tunnelful/releases) |
+| 当前源码 | `0.1.1`；已发布版本见 [Releases](https://github.com/ihopefulChina/Tunnelful/releases) |
 | macOS | macOS 14 或更高版本 |
-| `0.1.0` 构建目标 | Apple 芯片 `arm64` 与 Intel `x86_64` 单架构 DMG |
+| `0.1.1` 构建目标 | Apple 芯片 `arm64` 与 Intel `x86_64` 单架构 DMG |
 | Tunnel 引擎 | 用户自行安装的官方 `cloudflared` |
 | 主要工作流 | 已有本地配置的 locally-managed 命名 Tunnel |
 | 分发状态 | ad-hoc 签名，尚无 Developer ID 签名与 Apple 公证 |
@@ -107,7 +107,7 @@ cloudflared tunnel login
 
 登录在 Cloudflare 官方网页完成；Tunnelful 不接收 Cloudflare 密码、Token 或证书内容。
 
-`0.1.0` 暂不在 GUI 中创建 Tunnel。若账户中还没有命名 Tunnel，请在终端创建一个中性的示例 Tunnel：
+当前版本暂不在 GUI 中创建 Tunnel。若账户中还没有命名 Tunnel，请在终端创建一个中性的示例 Tunnel：
 
 ```bash
 cloudflared tunnel create demo
@@ -144,17 +144,17 @@ ingress:
 cloudflared tunnel route dns --overwrite-dns=false demo preview.example.com
 ```
 
-Tunnelful 会先显示待执行命令；截图隐私模式开启时会遮罩其中的 Tunnel 与域名。你可以只复制它；若要直接执行，需先关闭隐私遮罩、核对真实目标，再点击“配置 DNS 路由…”并再次确认。应用会显式传入 `--overwrite-dns=false`，在 Cloudflare 账户中创建 CNAME 记录但不覆盖同名的已有 DNS 记录。若命令超时，远端结果可能已生效；请先在 Cloudflare DNS 核对记录再重试。随后可在应用中启动 Tunnel，并分别检查进程、Edge、源站与日志。
+Tunnelful 会先显示待执行命令。你可以只复制它；若要直接执行，请核对真实 Tunnel 与域名，再点击“配置 DNS 路由…”并再次确认。应用会显式传入 `--overwrite-dns=false`，在 Cloudflare 账户中创建 CNAME 记录但不覆盖同名的已有 DNS 记录。若命令超时，远端结果可能已生效；请先在 Cloudflare DNS 核对记录再重试。随后可在应用中启动 Tunnel，并分别检查进程、Edge、源站与日志。
 
 ## GUI 与官方命令的对应关系
 
-| Tunnelful 操作 | 官方命令或系统行为 | `0.1.0` 行为 |
+| Tunnelful 操作 | 官方命令或系统行为 | 当前行为 |
 | --- | --- | --- |
 | 检测可执行文件 | `cloudflared --version` | 自动执行，只接受可运行且能识别版本的文件 |
 | 官方账户登录 | `cloudflared tunnel login` | 确认后执行，浏览器流程可取消 |
 | 刷新 Tunnel 列表 | `cloudflared tunnel list --output json` | 自动执行并解析列表 |
 | 保存 Ingress | `cloudflared tunnel --config <CONFIG_PATH> ingress validate` | 先校验临时预览，通过后再备份并保存 |
-| 配置 DNS 路由 | `cloudflared tunnel route dns --overwrite-dns=false <TUNNEL> <HOSTNAME>` | 显示并可复制；关闭隐私遮罩核对目标、再次确认后才执行 |
+| 配置 DNS 路由 | `cloudflared tunnel route dns --overwrite-dns=false <TUNNEL> <HOSTNAME>` | 显示真实命令并可复制；核对目标并再次确认后才执行 |
 | 启动 Tunnel | `cloudflared tunnel --config <CONFIG_PATH> run <TUNNEL>` | 作为 Tunnelful 子进程启动并读取日志 |
 | 停止或重启 | 向本应用创建的进程发送终止信号 | 不影响其他 `cloudflared` 进程 |
 
@@ -166,7 +166,7 @@ Tunnelful 会先显示待执行命令；截图隐私模式开启时会遮罩其�
 - “关于 Tunnelful”“设置…”与帮助入口位于屏幕顶部的 macOS 系统菜单，不占用主窗口工具栏。
 - 菜单栏可打开主窗口、启动/停止/重启当前 Tunnel、查看日志、检查环境和检查更新。
 - “登录 Mac 时自动打开 Tunnelful”与“打开 Tunnelful 后自动启动当前 Tunnel”可以分别启用；自动启动只会在 `cloudflared` 与可运行 Tunnel 等条件完整时发生。
-- 登录项注册要求应用位于“应用程序”文件夹，macOS 也可能要求用户在系统设置中确认。
+- 登录项需要从“应用程序”文件夹中的 Tunnelful 注册。若仍从安装盘或 macOS 临时副本运行，需退出后从“应用程序”重新打开。macOS 也可能要求在系统设置中确认。
 - 软件更新只在打开更新界面或主动检查时访问 GitHub Release；发现新版本后打开下载页，不会静默安装。
 - 外观支持跟随系统、浅色和深色，选择会应用到主窗口、设置、更新窗口与菜单栏界面。
 
@@ -177,7 +177,7 @@ Tunnelful 会先显示待执行命令；截图隐私模式开启时会遮罩其�
 - 启动 `cloudflared` 时会移除可能暗中改变账户、Token 或 DNS 覆盖行为的 Cloudflare 环境变量；DNS 命令还会显式关闭覆盖。
 - 不读取、展示或上传 Tunnel credentials 与 `cert.pem` 的内容，只检查必要的文件元数据和账户可用性。
 - 配置覆盖前会备份并保留原文件权限；临时预览文件只允许当前用户读写。
-- 日志会尽力遮罩常见令牌、用户目录等内容；截图隐私模式还会遮罩域名、源站、Tunnel 标识和凭据位置。
+- 日志会尽力遮罩常见令牌和用户目录；界面不再提供截图隐私模式。
 - 源站检查会向输入的 HTTP/HTTPS 地址发送一次短时 GET 请求，不应使用具有副作用的地址进行检查。
 
 日志脱敏是防误操作保护，不是完整的数据防泄漏系统。分享配置、命令、日志或截图前仍需人工检查。更多边界与漏洞报告方式见 [安全政策](SECURITY.md)。
@@ -247,8 +247,8 @@ Tunnelful/
 
 ```bash
 bash scripts/build-release.sh
-bash scripts/verify-release.sh release/Tunnelful-0.1.0-arm64.dmg
-bash scripts/verify-release.sh release/Tunnelful-0.1.0-x86_64.dmg
+bash scripts/verify-release.sh release/Tunnelful-0.1.1-arm64.dmg
+bash scripts/verify-release.sh release/Tunnelful-0.1.1-x86_64.dmg
 ```
 
 发布脚本会分别构建 `arm64` 与 `x86_64` 应用，移除调试符号、应用 ad-hoc 签名并验证 DMG；它不会访问 Developer ID 证书，也不会执行 Apple 公证或上传产物。

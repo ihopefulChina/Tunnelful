@@ -24,7 +24,7 @@ struct SettingsView: View {
                     get: { model.launchAtLoginState.isRequested },
                     set: { model.setLaunchAtLoginEnabled($0) }
                 ))
-                .disabled(model.launchAtLoginState == .unavailable)
+                .disabled(model.launchAtLoginState.isUnavailable)
 
                 Toggle("打开 Tunnelful 后自动启动当前 Tunnel", isOn: $model.startTunnelOnLaunch)
 
@@ -34,8 +34,8 @@ struct SettingsView: View {
                             model.openLoginItemsSettings()
                         }
                     }
-                } else if model.launchAtLoginState == .unavailable {
-                    Text("当前运行位置无法注册登录项。请将 Tunnelful 移到“应用程序”文件夹后重试。")
+                } else if let guidance = model.launchAtLoginState.guidance {
+                    Text(guidance)
                         .foregroundStyle(.secondary)
                 } else {
                     Text("两个选项可以独立使用；只有条件完整时才会启动 Tunnel。")
@@ -44,7 +44,7 @@ struct SettingsView: View {
             }
 
             Section("cloudflared") {
-                KeyValueRow(key: "可执行文件", value: model.installation.map { model.displayPath($0.executableURL.path) } ?? "未检测到")
+                KeyValueRow(key: "可执行文件", value: model.installation?.executableURL.path ?? "未检测到")
                 KeyValueRow(key: "版本", value: model.installation?.version ?? "未知")
                 KeyValueRow(key: "来源", value: model.installation?.source.rawValue ?? "未知")
                 Button("重新检测") {
@@ -56,7 +56,7 @@ struct SettingsView: View {
             }
 
             Section("本地配置") {
-                KeyValueRow(key: "当前文件", value: model.selectedConfigURL.map { model.displayPath($0.path) } ?? "尚未导入")
+                KeyValueRow(key: "当前文件", value: model.selectedConfigURL?.path ?? "尚未导入")
                 Button("导入配置…") { model.chooseConfiguration() }
                     .disabled(model.isApplyingConfiguration || model.isRoutingDNS)
             }
@@ -64,18 +64,16 @@ struct SettingsView: View {
             Section("软件更新") {
                 KeyValueRow(key: "当前版本", value: AppIdentity.releaseVersion)
                 LabeledContent {
-                    Button("检查更新…") { openWindow(id: "updates") }
+                    Button("检查更新…") {
+                        ApplicationActivation.openWindow {
+                            openWindow(id: "updates")
+                        }
+                    }
                 } label: {
                     Text(updateSummary)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
-            }
-
-            Section("隐私") {
-                Toggle("截图时遮罩敏感信息", isOn: $model.privacyMode)
-                Text("开启后隐藏路径中的用户名，并遮罩 Tunnel ID、域名、服务和 YAML 凭据位置。")
-                    .foregroundStyle(.secondary)
             }
 
             Section("安全") {

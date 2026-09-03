@@ -2,11 +2,80 @@ import Combine
 import Darwin
 import Foundation
 
+/// Interprets cloudflared logs into an Edge status.
+/// cloudflared keeps several HA connections; one of them retrying is not a tunnel outage.
+struct EdgeLogInterpreter: Equatable, Sendable {
+    private var liveConnections: Set<Int> = []
+    private var sawRegistration = false
+
+    mutating func reset() {
+        liveConnections.removeAll(keepingCapacity: true)
+        sawRegistration = false
+    }
+
+    mutating func consume(_ line: String) -> EdgeConnectionState {
+        let normalized = line.lowercased()
+        let index = Self.connectionIndex(in: normalized)
+
+        if Self.isRegistration(normalized) {
+            liveConnections.insert(index ?? 0)
+            sawRegistration = true
+        } else if Self.isPerConnectionLoss(normalized) {
+            if let index {
+                liveConnections.remove(index)
+            } else if liveConnections.count <= 1 {
+                liveConnections.removeAll(keepingCapacity: true)
+            }
+        } else if Self.isGlobalEstablishFailure(normalized) {
+            liveConnections.removeAll(keepingCapacity: true)
+        }
+
+        if !liveConnections.isEmpty {
+            return .connected
+        }
+        if sawRegistration {
+            return .degraded
+        }
+        return .connecting
+    }
+
+    private static func isRegistration(_ line: String) -> Bool {
+        line.contains("registered tunnel connection")
+            || line.contains("tunnel connection registered")
+    }
+
+    private static func isPerConnectionLoss(_ line: String) -> Bool {
+        line.contains("failed to serve tunnel connection")
+            || line.contains("unregistered tunnel connection")
+    }
+
+    private static func isGlobalEstablishFailure(_ line: String) -> Bool {
+        line.contains("unable to establish connection with cloudflare")
+            || line.contains("failed to dial a quic connection")
+            || line.contains("failed to dial cloudflare edge")
+    }
+
+    private static let connectionIndexExpression = try? NSRegularExpression(
+        pattern: #"connindex["\s:=]+(\d+)"#
+    )
+
+    private static func connectionIndex(in line: String) -> Int? {
+        guard let regex = connectionIndexExpression,
+              let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+              match.numberOfRanges > 1,
+              let range = Range(match.range(at: 1), in: line) else {
+            return nil
+        }
+        return Int(line[range])
+    }
+}
+
 @MainActor
 final class TunnelProcessController: ObservableObject {
     @Published private(set) var processState: ManagedProcessState = .stopped
     @Published private(set) var edgeState: EdgeConnectionState = .unknown
     @Published private(set) var logs: [LogEntry] = []
+    private var edgeInterpreter = EdgeLogInterpreter()
 
     private struct LaunchRequest {
         let executableURL: URL
@@ -56,6 +125,7 @@ final class TunnelProcessController: ObservableObject {
         newProcess.standardError = standardError
 
         processState = .starting
+        edgeInterpreter.reset()
         edgeState = .connecting
         appendAppLog("正在启动托管隧道。")
 
@@ -102,6 +172,7 @@ final class TunnelProcessController: ObservableObject {
             try? standardError.fileHandleForReading.close()
             try? standardError.fileHandleForWriting.close()
             processState = .failed(exitCode: -1)
+            edgeInterpreter.reset()
             edgeState = .unknown
             throw CloudflaredError.processCouldNotStart(error.localizedDescription)
         }
@@ -183,6 +254,7 @@ final class TunnelProcessController: ObservableObject {
         }
         terminatedProcess.terminationHandler = nil
         process = nil
+        edgeInterpreter.reset()
         edgeState = .unknown
         if terminationStatus == 0 || wasExpectedTermination {
             processState = .stopped
@@ -202,22 +274,10 @@ final class TunnelProcessController: ObservableObject {
         for rawLine in completeLines where !rawLine.isEmpty {
             let message = redactor.redact(rawLine)
             logs.append(LogEntry(timestamp: Date(), stream: stream, message: message))
-            updateEdgeState(from: message)
+            edgeState = edgeInterpreter.consume(message)
         }
         if logs.count > 2_000 {
             logs.removeFirst(logs.count - 2_000)
-        }
-    }
-
-    private func updateEdgeState(from line: String) {
-        let normalized = line.lowercased()
-        if normalized.contains("registered tunnel connection") ||
-            normalized.contains("connection registered") {
-            edgeState = .connected
-        } else if normalized.contains("failed to serve tunnel connection") ||
-                    normalized.contains("connection error") ||
-                    normalized.contains("unable to establish") {
-            edgeState = .degraded
         }
     }
 

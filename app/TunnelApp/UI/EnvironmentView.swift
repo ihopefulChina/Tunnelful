@@ -177,7 +177,7 @@ private struct EnvironmentContent: View {
 
             VStack(spacing: 0) {
                 ForEach(Array(report.items.enumerated()), id: \.element.id) { index, item in
-                    EnvironmentCheckRow(item: item, displayMessage: model.displayMessage)
+                    EnvironmentCheckRow(item: item)
                     if index < report.items.count - 1 {
                         Divider().padding(.leading, 48)
                     }
@@ -200,7 +200,7 @@ private struct EnvironmentContent: View {
         case .cancelled:
             return "登录已取消，本机凭据没有被修改。"
         case let .failed(message):
-            return model.displayMessage(message)
+            return message
         }
     }
 }
@@ -255,7 +255,6 @@ private struct SetupRow<Actions: View>: View {
 
 private struct EnvironmentCheckRow: View {
     let item: EnvironmentCheckItem
-    let displayMessage: (String) -> String
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -268,7 +267,7 @@ private struct EnvironmentCheckRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.title)
                     .fontWeight(.medium)
-                Text(displayMessage(item.detail))
+                Text(item.detail)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -283,7 +282,7 @@ private struct EnvironmentCheckRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.title)，\(stateLabel)。\(displayMessage(item.detail))")
+        .accessibilityLabel("\(item.title)，\(stateLabel)。\(item.detail)")
     }
 
     private var symbol: String {

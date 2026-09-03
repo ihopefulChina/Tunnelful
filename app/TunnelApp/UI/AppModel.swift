@@ -74,17 +74,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastDNSRouteMessage: String?
     @Published private(set) var launchAtLoginState: LaunchAtLoginState
     @Published private(set) var startupAutomationMessage: String?
-    @Published var alertMessage: String? {
-        didSet {
-            if alertMessage == nil {
-                alertPrivacyContext = nil
-            }
-        }
-    }
+    @Published var alertMessage: String?
     @Published var requestedSection: AppSection?
-    @Published var privacyMode: Bool {
-        didSet { userDefaults.set(privacyMode, forKey: Self.privacyModeKey) }
-    }
     @Published var appearance: AppAppearance {
         didSet {
             userDefaults.set(appearance.rawValue, forKey: Self.appearanceKey)
@@ -98,7 +89,6 @@ final class AppModel: ObservableObject {
     let processController: TunnelProcessController
     let loginController: CloudflaredLoginController
 
-    private static let privacyModeKey = "privacyMode"
     private static let appearanceKey = "appearance"
     private static let preferredExecutablePathKey = "preferredExecutablePath"
     private static let startTunnelOnLaunchKey = "startTunnelOnLaunch"
@@ -120,18 +110,6 @@ final class AppModel: ObservableObject {
     private var activeConfigurationPreviewURL: URL?
     private var activeConfigurationValidationTask: Task<String, Error>?
     private var activeDNSRouteTask: Task<String, Error>?
-    private var alertPrivacyContext: AlertPrivacyContext?
-
-    private struct PrivacyReplacement {
-        let source: String
-        let replacement: String
-        let options: String.CompareOptions
-    }
-
-    private struct AlertPrivacyContext {
-        let sourceMessage: String
-        let replacements: [PrivacyReplacement]
-    }
 
     init(
         processController: TunnelProcessController,
@@ -165,9 +143,6 @@ final class AppModel: ObservableObject {
         if let path = userDefaults.string(forKey: Self.preferredExecutablePathKey), !path.isEmpty {
             preferredExecutableURL = URL(fileURLWithPath: path).standardizedFileURL
         }
-        privacyMode = userDefaults.object(forKey: Self.privacyModeKey) == nil
-            ? true
-            : userDefaults.bool(forKey: Self.privacyModeKey)
         appearance = AppAppearance(rawValue: userDefaults.string(forKey: Self.appearanceKey) ?? "") ?? .system
         applyAppearance()
     }
@@ -177,94 +152,6 @@ final class AppModel: ObservableObject {
     var hasUnsavedConfigurationDraft: Bool {
         guard let configurationDraft else { return false }
         return configurationDraft != configDocument
-    }
-
-    func displayPath(_ value: String) -> String {
-        privacyMode ? PrivacyMasker().path(value) : value
-    }
-
-    func displayIdentifier(_ value: String) -> String {
-        privacyMode ? PrivacyMasker().identifier(value) : value
-    }
-
-    func displaySensitive(_ value: String) -> String {
-        privacyMode ? "••••••" : value
-    }
-
-    func displayYAML(_ value: String) -> String {
-        privacyMode ? PrivacyMasker().yaml(value) : value
-    }
-
-    func displayDNSCommand(_ plan: DNSRoutePlan) -> String {
-        privacyMode
-            ? DNSRoutePlan(tunnelName: "dev", hostname: "preview.example.com").displayCommand
-            : plan.displayCommand
-    }
-
-    func displayMessage(_ value: String) -> String {
-        guard privacyMode else { return value }
-
-        var result = SensitiveLogRedactor().redact(PrivacyMasker().path(value))
-        var replacements: [PrivacyReplacement] = []
-        for document in [configDocument, configurationDraft].compactMap({ $0 }) {
-            for (index, rule) in document.ingress.enumerated() {
-                if let hostname = rule.hostname, !hostname.isEmpty {
-                    let replacement: String
-                    switch index {
-                    case 0: replacement = "preview.example.com"
-                    case 1: replacement = "admin.example.com"
-                    default: replacement = "service-\(index + 1).example.com"
-                    }
-                    replacements.append(PrivacyReplacement(
-                        source: hostname,
-                        replacement: replacement,
-                        options: .caseInsensitive
-                    ))
-                }
-                if !rule.service.isEmpty, !rule.isCatchAll {
-                    replacements.append(PrivacyReplacement(
-                        source: rule.service,
-                        replacement: "http://127.0.0.1:\(3000 + index * 1000)",
-                        options: .caseInsensitive
-                    ))
-                }
-            }
-            if let configured = document.tunnel, !configured.isEmpty {
-                replacements.append(PrivacyReplacement(
-                    source: configured,
-                    replacement: "••••••••",
-                    options: .caseInsensitive
-                ))
-            }
-        }
-        for (index, tunnel) in tunnels.enumerated() {
-            if !tunnel.id.isEmpty {
-                replacements.append(PrivacyReplacement(
-                    source: tunnel.id,
-                    replacement: "••••••••",
-                    options: []
-                ))
-            }
-            let replacement = index == 0 ? "dev" : (index == 1 ? "preview" : "Tunnel \(index + 1)")
-            if !tunnel.name.isEmpty {
-                replacements.append(PrivacyReplacement(
-                    source: tunnel.name,
-                    replacement: replacement,
-                    options: .caseInsensitive
-                ))
-            }
-        }
-        if let alertPrivacyContext, alertPrivacyContext.sourceMessage == value {
-            replacements.append(contentsOf: alertPrivacyContext.replacements)
-        }
-        for replacement in replacements.sorted(by: { $0.source.count > $1.source.count }) {
-            result = result.replacingOccurrences(
-                of: replacement.source,
-                with: replacement.replacement,
-                options: replacement.options
-            )
-        }
-        return result
     }
 
     var preferredTunnelName: String? {
@@ -482,6 +369,9 @@ final class AppModel: ObservableObject {
             if launchAtLoginState == .requiresApproval {
                 alertMessage = "macOS 需要你在“系统设置 → 通用 → 登录项”中允许 Tunnelful。"
             }
+        } catch let error as LaunchAtLoginError {
+            launchAtLoginState = launchAtLoginManager.currentState()
+            alertMessage = error.localizedDescription
         } catch {
             launchAtLoginState = launchAtLoginManager.currentState()
             alertMessage = "无法更新开机启动设置：\(error.localizedDescription)"
@@ -579,24 +469,9 @@ final class AppModel: ObservableObject {
         defer { isApplyingConfiguration = false }
 
         document.upsert(hostname: hostname, path: path, service: service)
-        let publishPrivacyReplacements = [
-            PrivacyReplacement(
-                source: hostname.trimmingCharacters(in: .whitespacesAndNewlines),
-                replacement: "preview.example.com",
-                options: .caseInsensitive
-            ),
-            PrivacyReplacement(
-                source: service.trimmingCharacters(in: .whitespacesAndNewlines),
-                replacement: "http://127.0.0.1:3000",
-                options: .caseInsensitive
-            )
-        ].filter { !$0.source.isEmpty }
         let localErrors = document.validationIssues().filter { $0.severity == .error }
         guard localErrors.isEmpty else {
-            presentAlert(
-                localErrors.map(\.message).joined(separator: " "),
-                privacyReplacements: publishPrivacyReplacements
-            )
+            alertMessage = localErrors.map(\.message).joined(separator: " ")
             return
         }
 
@@ -629,17 +504,13 @@ final class AppModel: ObservableObject {
             return
         } catch {
             guard !isTerminating else { return }
-            presentAlert(error.localizedDescription, privacyReplacements: publishPrivacyReplacements)
+            alertMessage = error.localizedDescription
         }
     }
 
     func routeDNS(_ plan: DNSRoutePlan) async {
         guard !isTerminating else { return }
         guard !isRoutingDNS else { return }
-        guard !privacyMode else {
-            alertMessage = "请先关闭截图隐私模式，核对真实的 Tunnel 与域名后再配置 DNS 路由。"
-            return
-        }
         let tunnelName = plan.tunnelName.trimmingCharacters(in: .whitespacesAndNewlines)
         let hostname = plan.hostname.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !tunnelName.isEmpty, !hostname.isEmpty,
@@ -685,19 +556,6 @@ final class AppModel: ObservableObject {
             isRoutingDNS = false
         }
 
-        let privacyReplacements = [
-            PrivacyReplacement(
-                source: plan.tunnelName,
-                replacement: "dev",
-                options: .caseInsensitive
-            ),
-            PrivacyReplacement(
-                source: plan.hostname,
-                replacement: "preview.example.com",
-                options: .caseInsensitive
-            )
-        ].filter { !$0.source.isEmpty }
-
         do {
             let output = try await routeTask.value
             guard !isTerminating else { return }
@@ -708,10 +566,10 @@ final class AppModel: ObservableObject {
             return
         } catch let error as CloudflaredError {
             guard !isTerminating else { return }
-            presentAlert(error.dnsRouteErrorDescription, privacyReplacements: privacyReplacements)
+            alertMessage = error.dnsRouteErrorDescription
         } catch {
             guard !isTerminating else { return }
-            presentAlert(error.localizedDescription, privacyReplacements: privacyReplacements)
+            alertMessage = error.localizedDescription
         }
     }
 
@@ -817,17 +675,6 @@ final class AppModel: ObservableObject {
                 activeConfigurationPreviewURL = nil
             }
         }
-    }
-
-    private func presentAlert(
-        _ message: String,
-        privacyReplacements: [PrivacyReplacement]
-    ) {
-        alertPrivacyContext = AlertPrivacyContext(
-            sourceMessage: message,
-            replacements: privacyReplacements
-        )
-        alertMessage = message
     }
 
     func validateCurrentConfiguration() async {

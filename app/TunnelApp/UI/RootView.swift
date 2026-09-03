@@ -53,20 +53,7 @@ struct RootView: View {
         )) {
             Button("好", role: .cancel) { model.alertMessage = nil }
         } message: {
-            Text(model.alertMessage.map { model.displayMessage($0) } ?? "")
-        }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    model.privacyMode.toggle()
-                } label: {
-                    Label(
-                        model.privacyMode ? "关闭隐私遮罩" : "开启隐私遮罩",
-                        systemImage: model.privacyMode ? "eye.slash" : "eye"
-                    )
-                }
-                .help("遮罩路径、Tunnel ID、域名与服务，方便安全截图")
-            }
+            Text(model.alertMessage ?? "")
         }
     }
 

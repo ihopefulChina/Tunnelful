@@ -2,7 +2,6 @@ import AppKit
 import SwiftUI
 
 struct LogsView: View {
-    @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var process: TunnelProcessController
     @State private var searchText = ""
     @State private var stream: StreamFilter = .all
@@ -89,7 +88,7 @@ struct LogsView: View {
                     .width(min: 72, ideal: 82, max: 100)
 
                     TableColumn("消息") { entry in
-                        Text(model.displayMessage(entry.message))
+                        Text(entry.message)
                             .font(.system(.caption, design: .monospaced))
                             .textSelection(.enabled)
                             .lineLimit(2)
@@ -107,7 +106,7 @@ struct LogsView: View {
 
     private func copyLogs() {
         let text = filteredLogs.map {
-            "\($0.timestamp.formatted(.iso8601)) [\($0.stream.rawValue)] \(model.displayMessage($0.message))"
+            "\($0.timestamp.formatted(.iso8601)) [\($0.stream.rawValue)] \($0.message)"
         }.joined(separator: "\n")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)

@@ -38,6 +38,8 @@
 		01000000000000000000001E /* EnvironmentInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000021 /* EnvironmentInspector.swift */; };
 		01000000000000000000001F /* CloudflaredLoginController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000022 /* CloudflaredLoginController.swift */; };
 		010000000000000000000020 /* EnvironmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000023 /* EnvironmentView.swift */; };
+		010000000000000000000021 /* LaunchAtLoginTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000024 /* LaunchAtLoginTests.swift */; };
+		010000000000000000000022 /* EdgeLogInterpreterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000025 /* EdgeLogInterpreterTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -86,6 +88,8 @@
 		020000000000000000000021 /* EnvironmentInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentInspector.swift; sourceTree = "<group>"; };
 		020000000000000000000022 /* CloudflaredLoginController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflaredLoginController.swift; sourceTree = "<group>"; };
 		020000000000000000000023 /* EnvironmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentView.swift; sourceTree = "<group>"; };
+		020000000000000000000024 /* LaunchAtLoginTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginTests.swift; sourceTree = "<group>"; };
+		020000000000000000000025 /* EdgeLogInterpreterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EdgeLogInterpreterTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -162,6 +166,8 @@
 				020000000000000000000018 /* ConfigurationTests.swift */,
 				020000000000000000000019 /* ProcessControllerTests.swift */,
 				02000000000000000000001F /* UpdateCheckerTests.swift */,
+				020000000000000000000024 /* LaunchAtLoginTests.swift */,
+				020000000000000000000025 /* EdgeLogInterpreterTests.swift */,
 			);
 			path = TunnelAppTests;
 			sourceTree = "<group>";
@@ -280,6 +286,8 @@
 				010000000000000000000018,
 				010000000000000000000019,
 				01000000000000000000001C,
+				010000000000000000000021,
+				010000000000000000000022,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

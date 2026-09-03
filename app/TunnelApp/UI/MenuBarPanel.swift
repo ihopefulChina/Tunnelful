@@ -110,7 +110,8 @@ struct MenuBarPanel: View {
     private var statusText: String {
         switch (process.processState, process.edgeState) {
         case (.running, .connected): return "已连接 Cloudflare Edge"
-        case (.running, .degraded): return "运行中，Edge 连接异常"
+        case (.running, .degraded): return "运行中，正在重连 Edge"
+        case (.running, .connecting): return "正在连接 Cloudflare Edge"
         case (.running, _): return "Tunnel 运行中"
         case (.starting, _): return "Tunnel 启动中"
         case (.failed, _): return "Tunnel 启动失败"

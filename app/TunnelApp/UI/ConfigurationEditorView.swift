@@ -56,7 +56,7 @@ struct ConfigurationEditorView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("当前配置")
                         .font(.headline)
-                    Text(document.sourceURL.map { model.displayPath($0.path) } ?? "未关联配置文件")
+                    Text(document.sourceURL?.path ?? "未关联配置文件")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -65,16 +65,6 @@ struct ConfigurationEditorView: View {
                 }
 
                 Spacer(minLength: 12)
-
-                Button {
-                    model.privacyMode.toggle()
-                } label: {
-                    Label(
-                        model.privacyMode ? "关闭隐私遮罩" : "开启隐私遮罩",
-                        systemImage: model.privacyMode ? "eye.slash" : "eye"
-                    )
-                }
-                .help(model.privacyMode ? "关闭遮罩后可编辑敏感字段" : "遮罩域名、服务与配置路径")
 
                 Button("导入其他配置…") {
                     model.chooseConfiguration()
@@ -94,12 +84,6 @@ struct ConfigurationEditorView: View {
                     .foregroundStyle(.secondary)
 
                 Spacer()
-
-                if model.privacyMode {
-                    Label("遮罩开启，编辑已锁定", systemImage: "lock.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
 
                 Button {
                     addRule()
@@ -248,8 +232,6 @@ struct ConfigurationEditorView: View {
             TextField(title, text: text, prompt: Text(prompt))
                 .labelsHidden()
                 .textFieldStyle(.roundedBorder)
-                .privacySensitive()
-                .redacted(reason: model.privacyMode ? .privacy : [])
                 .disabled(editingIsDisabled)
                 .accessibilityLabel(title)
         }
@@ -261,19 +243,13 @@ struct ConfigurationEditorView: View {
                 Text("YAML 预览")
                     .font(.title2.weight(.semibold))
                 Spacer()
-                if model.privacyMode {
-                    Label("敏感值已遮罩", systemImage: "eye.slash")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
 
             ScrollView([.horizontal, .vertical]) {
-                Text(model.displayYAML(CloudflaredConfigSerializer().serialize(document)))
+                Text(CloudflaredConfigSerializer().serialize(document))
                     .font(.system(.callout, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
-                    .privacySensitive()
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .padding(16)
             }
@@ -372,7 +348,7 @@ struct ConfigurationEditorView: View {
     }
 
     private var editingIsDisabled: Bool {
-        model.privacyMode || model.isApplyingConfiguration || model.isRoutingDNS
+        model.isApplyingConfiguration || model.isRoutingDNS
     }
 
     private var hasUnsavedChanges: Bool {
@@ -386,15 +362,13 @@ struct ConfigurationEditorView: View {
               model.installation != nil else {
             return false
         }
-        return !model.privacyMode &&
-            !model.isApplyingConfiguration &&
+        return !model.isApplyingConfiguration &&
             !model.isRoutingDNS &&
             localErrors.isEmpty &&
             hasUnsavedChanges
     }
 
     private var saveStatusTitle: String {
-        if model.privacyMode { return "隐私遮罩已开启" }
         if !localErrors.isEmpty { return "有 \(localErrors.count) 个问题需要修正" }
         if hasUnsavedChanges { return "有尚未保存的更改" }
         if model.lastValidationMessage != nil { return "配置已保存" }
@@ -402,16 +376,14 @@ struct ConfigurationEditorView: View {
     }
 
     private var saveStatusDetail: String {
-        if model.privacyMode { return "关闭遮罩后可编辑并保存结构化规则。" }
         if let firstError = localErrors.first { return firstError.message }
         if hasUnsavedChanges { return "保存时会先运行官方校验，并自动备份原文件。" }
-        if let message = model.lastValidationMessage { return model.displayMessage(message) }
+        if let message = model.lastValidationMessage { return message }
         if model.installation == nil { return "检测到 cloudflared 后才能运行官方校验。" }
         return "修改规则后即可保存。"
     }
 
     private var saveStatusSymbol: String {
-        if model.privacyMode { return "lock.fill" }
         if !localErrors.isEmpty { return "exclamationmark.triangle.fill" }
         if hasUnsavedChanges { return "pencil.circle.fill" }
         if model.lastValidationMessage != nil { return "checkmark.circle.fill" }
@@ -425,7 +397,6 @@ struct ConfigurationEditorView: View {
     }
 
     private var saveButtonHelp: String {
-        if model.privacyMode { return "请先关闭隐私遮罩" }
         if model.installation == nil { return "未检测到 cloudflared，无法运行官方校验" }
         if !localErrors.isEmpty { return "请先修正本地结构问题" }
         if !hasUnsavedChanges { return "没有需要保存的更改" }

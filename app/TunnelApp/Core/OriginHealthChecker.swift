@@ -28,12 +28,21 @@ struct OriginHealthChecker: Sendable {
 
         do {
             let (_, response) = try await session.data(for: request)
+            session.finishTasksAndInvalidate()
             let code = (response as? HTTPURLResponse)?.statusCode
+            let latency = Date().timeIntervalSince(startedAt)
+            if let code, (500...599).contains(code) {
+                return OriginHealthResult(
+                    state: .unreachable("源站返回 HTTP \(code)。"),
+                    latency: latency
+                )
+            }
             return OriginHealthResult(
                 state: .reachable(statusCode: code),
-                latency: Date().timeIntervalSince(startedAt)
+                latency: latency
             )
         } catch {
+            session.finishTasksAndInvalidate()
             return OriginHealthResult(
                 state: .unreachable(SensitiveLogRedactor().redact(error.localizedDescription)),
                 latency: Date().timeIntervalSince(startedAt)

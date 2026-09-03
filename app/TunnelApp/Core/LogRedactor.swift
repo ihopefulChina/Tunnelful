@@ -40,37 +40,3 @@ struct SensitiveLogRedactor: LogRedacting {
         }
     }
 }
-
-struct PrivacyMasker: Sendable {
-    private let homePath: String
-
-    init(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) {
-        homePath = homeDirectory.standardizedFileURL.path
-    }
-
-    func path(_ value: String) -> String {
-        value.replacingOccurrences(of: homePath, with: "$HOME")
-    }
-
-    func identifier(_ value: String) -> String {
-        value.isEmpty ? "—" : "••••••••"
-    }
-
-    func yaml(_ value: String) -> String {
-        let redacted = SensitiveLogRedactor().redact(path(value))
-        let definitions: [(String, String)] = [
-            (#"(?m)^(\s*tunnel:\s*).+$"#, "$1<已隐藏隧道 ID>"),
-            (#"(?m)^(\s*credentials-file:\s*).+$"#, "$1<已隐藏凭据路径>"),
-            (#"(?m)^(\s*-?\s*hostname:\s*).+$"#, "$1<已隐藏域名>"),
-            (#"(?m)^([ \t]*-?[ \t]*service:[ \t]*)(?![ \t]*['\"]?http_status:).+$"#, "$1<已隐藏服务>")
-        ]
-        return definitions.reduce(redacted) { text, definition in
-            guard let expression = try? NSRegularExpression(pattern: definition.0) else { return text }
-            return expression.stringByReplacingMatches(
-                in: text,
-                range: NSRange(text.startIndex..., in: text),
-                withTemplate: definition.1
-            )
-        }
-    }
-}

@@ -94,7 +94,7 @@ enum EdgeConnectionState: String, Equatable, Sendable {
     case unknown = "未知"
     case connecting = "连接中"
     case connected = "已连接"
-    case degraded = "连接降级"
+    case degraded = "重连中"
 }
 
 enum OriginReachabilityState: Equatable, Sendable {
@@ -127,14 +127,43 @@ enum TunnelDiscoveryState: Equatable, Sendable {
     case failed(String)
 }
 
+enum LaunchAtLoginBlocker: Equatable, Sendable {
+    case translocated
+    case diskImage
+    case notInApplications
+
+    var guidance: String {
+        switch self {
+        case .translocated:
+            return "macOS 正在从临时副本运行 Tunnelful。请完全退出应用，然后从“应用程序”文件夹重新打开。"
+        case .diskImage:
+            return "当前从安装盘运行。请把 Tunnelful 拖入“应用程序”后退出，再从“应用程序”打开。"
+        case .notInApplications:
+            return "当前运行位置无法注册登录项。请将 Tunnelful 移到“应用程序”文件夹后重试。"
+        }
+    }
+}
+
 enum LaunchAtLoginState: Equatable, Sendable {
     case disabled
     case enabled
     case requiresApproval
-    case unavailable
+    case unavailable(LaunchAtLoginBlocker)
 
     var isRequested: Bool {
         self == .enabled || self == .requiresApproval
+    }
+
+    var isUnavailable: Bool {
+        if case .unavailable = self { return true }
+        return false
+    }
+
+    var guidance: String? {
+        if case let .unavailable(blocker) = self {
+            return blocker.guidance
+        }
+        return nil
     }
 }
 

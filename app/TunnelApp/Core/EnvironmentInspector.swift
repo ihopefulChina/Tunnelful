@@ -177,7 +177,8 @@ struct EnvironmentInspector: @unchecked Sendable {
                 : "未启用；可在设置中分别开启应用与 Tunnel 的自动启动。"
             launchState = .information
         case .unavailable:
-            launchDetail = "当前运行位置无法注册登录项；请将应用移到“应用程序”后重试。"
+            launchDetail = launchAtLoginState.guidance
+                ?? "当前运行位置无法注册登录项。请将 Tunnelful 移到“应用程序”文件夹后重试。"
             launchState = .attention
         }
         items.append(EnvironmentCheckItem(
