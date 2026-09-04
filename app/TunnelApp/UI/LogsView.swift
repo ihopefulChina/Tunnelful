@@ -5,6 +5,7 @@ struct LogsView: View {
     @EnvironmentObject private var process: TunnelProcessController
     @State private var searchText = ""
     @State private var stream: StreamFilter = .all
+    @State private var isConfirmingClear = false
 
     private enum StreamFilter: String, CaseIterable, Identifiable {
         case all = "全部"
@@ -58,7 +59,8 @@ struct LogsView: View {
                         Text(entry.message)
                             .font(.system(.caption, design: .monospaced))
                             .textSelection(.enabled)
-                            .lineLimit(2)
+                            .lineLimit(3)
+                            .help(entry.message)
                     }
                 }
                 .tableStyle(.inset(alternatesRowBackgrounds: true))
@@ -85,15 +87,29 @@ struct LogsView: View {
                     Label("复制", systemImage: "doc.on.doc")
                 }
                 .disabled(filteredLogs.isEmpty)
+                .help("复制当前筛选后的日志")
             }
 
             ToolbarItem {
                 Button(role: .destructive) {
-                    process.clearLogs()
+                    isConfirmingClear = true
                 } label: {
                     Label("清空", systemImage: "trash")
                 }
                 .disabled(process.logs.isEmpty)
+                .help("清空本窗口中的日志")
+                .confirmationDialog(
+                    "清空全部日志？",
+                    isPresented: $isConfirmingClear,
+                    titleVisibility: .visible
+                ) {
+                    Button("清空日志", role: .destructive) {
+                        process.clearLogs()
+                    }
+                    Button("取消", role: .cancel) {}
+                } message: {
+                    Text("只清除 Tunnelful 窗口中的记录，不会影响 cloudflared 进程。")
+                }
             }
         }
     }

@@ -21,7 +21,7 @@ struct ConfigurationEditorView: View {
                         emptyState
                     }
                 }
-                .frame(maxWidth: 1_080, alignment: .leading)
+                .frame(maxWidth: AppMetrics.maxContentWidth, alignment: .leading)
                 .padding(.horizontal, AppMetrics.pagePadding)
                 .padding(.top, AppMetrics.pageTopPadding)
                 .padding(.bottom, AppMetrics.pageBottomPadding)
@@ -125,7 +125,7 @@ struct ConfigurationEditorView: View {
                 Text("\(index + 1)")
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
+                    .frame(width: AppMetrics.accessoryColumnWidth, height: AppMetrics.accessoryColumnWidth)
                     .background(.primary.opacity(0.06), in: Circle())
 
                 Label(
@@ -136,61 +136,37 @@ struct ConfigurationEditorView: View {
 
                 Spacer()
 
-                Button {
+                IconToolButton(
+                    systemImage: "arrow.up",
+                    accessibilityLabel: "上移第 \(index + 1) 条规则",
+                    helpText: "上移规则",
+                    disabled: editingIsDisabled || !canMoveRule(rule.id, by: -1)
+                ) {
                     moveRule(rule.id, by: -1)
-                } label: {
-                    Image(systemName: "arrow.up")
-                        .frame(width: 26, height: 26)
                 }
-                .buttonStyle(.borderless)
-                .disabled(editingIsDisabled || !canMoveRule(rule.id, by: -1))
-                .help("上移规则")
-                .accessibilityLabel("上移第 \(index + 1) 条规则")
 
-                Button {
+                IconToolButton(
+                    systemImage: "arrow.down",
+                    accessibilityLabel: "下移第 \(index + 1) 条规则",
+                    helpText: "下移规则",
+                    disabled: editingIsDisabled || !canMoveRule(rule.id, by: 1)
+                ) {
                     moveRule(rule.id, by: 1)
-                } label: {
-                    Image(systemName: "arrow.down")
-                        .frame(width: 26, height: 26)
                 }
-                .buttonStyle(.borderless)
-                .disabled(editingIsDisabled || !canMoveRule(rule.id, by: 1))
-                .help("下移规则")
-                .accessibilityLabel("下移第 \(index + 1) 条规则")
 
-                Button(role: .destructive) {
+                IconToolButton(
+                    systemImage: "trash",
+                    accessibilityLabel: "删除第 \(index + 1) 条规则",
+                    helpText: isProtectedFallback ? "兜底规则不能删除" : "删除规则",
+                    role: .destructive,
+                    disabled: editingIsDisabled || isProtectedFallback
+                ) {
                     removeRule(rule.id)
-                } label: {
-                    Image(systemName: "trash")
-                        .frame(width: 26, height: 26)
                 }
-                .buttonStyle(.borderless)
-                .disabled(editingIsDisabled || isProtectedFallback)
-                .help(isProtectedFallback ? "兜底规则不能删除" : "删除规则")
-                .accessibilityLabel("删除第 \(index + 1) 条规则")
             }
 
-            HStack(alignment: .top, spacing: 12) {
-                ruleField(
-                    title: "hostname",
-                    prompt: "app.example.com",
-                    text: optionalBinding(for: rule.id, keyPath: \.hostname)
-                )
-                .frame(maxWidth: .infinity)
-
-                ruleField(
-                    title: "path（可选）",
-                    prompt: "^/api/.*",
-                    text: optionalBinding(for: rule.id, keyPath: \.path)
-                )
-                .frame(maxWidth: .infinity)
-
-                ruleField(
-                    title: "service",
-                    prompt: "http://127.0.0.1:3000",
-                    text: serviceBinding(for: rule.id)
-                )
-                .frame(maxWidth: .infinity)
+            HStack(alignment: .top, spacing: AppMetrics.rowSpacing) {
+                ruleFields(for: rule)
             }
 
             if isProtectedFallback {
@@ -203,13 +179,40 @@ struct ConfigurationEditorView: View {
                 Label(issue.message, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(AppPalette.statusOrange)
+                    .accessibilityLabel("错误：\(issue.message)")
             }
         }
-        .appSurface(padding: 16)
-        .overlay {
-            RoundedRectangle(cornerRadius: AppMetrics.cornerRadius, style: .continuous)
-                .strokeBorder(issues.isEmpty ? Color.clear : AppPalette.statusOrange.opacity(0.45), lineWidth: 1)
-        }
+        .appSurface(
+            padding: AppMetrics.stackSpacing,
+            tint: issues.isEmpty ? .clear : AppPalette.statusOrange.opacity(0.06),
+            borderColor: issues.isEmpty
+                ? AppPalette.hairline.opacity(AppMetrics.hairlineOpacity)
+                : AppPalette.statusOrange.opacity(0.45)
+        )
+    }
+
+    @ViewBuilder
+    private func ruleFields(for rule: IngressRule) -> some View {
+        ruleField(
+            title: "hostname",
+            prompt: "app.example.com",
+            text: optionalBinding(for: rule.id, keyPath: \.hostname)
+        )
+        .frame(maxWidth: .infinity)
+
+        ruleField(
+            title: "path（可选）",
+            prompt: "^/api/.*",
+            text: optionalBinding(for: rule.id, keyPath: \.path)
+        )
+        .frame(maxWidth: .infinity)
+
+        ruleField(
+            title: "service",
+            prompt: "http://127.0.0.1:3000",
+            text: serviceBinding(for: rule.id)
+        )
+        .frame(maxWidth: .infinity)
     }
 
     private func ruleField(
@@ -237,16 +240,16 @@ struct ConfigurationEditorView: View {
                 Spacer()
             }
 
-            ScrollView([.horizontal, .vertical]) {
+            ScrollView {
                 Text(CloudflaredConfigSerializer().serialize(document))
                     .font(.system(.callout, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .padding(16)
+                    .padding(AppMetrics.stackSpacing)
             }
-            .frame(minHeight: 170, maxHeight: 260)
-            .background(AppPalette.panel, in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadius, style: .continuous))
+            .frame(minHeight: 160, maxHeight: 240)
+            .appSurface(padding: 0, fill: AppPalette.workspace)
             .accessibilityLabel("YAML 预览")
         }
     }
@@ -517,6 +520,6 @@ struct ConfigurationEditorView: View {
 
     private func panel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
-            .appSurface(padding: 16)
+            .appSurface(padding: AppMetrics.stackSpacing)
     }
 }

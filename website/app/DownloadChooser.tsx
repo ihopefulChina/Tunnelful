@@ -20,9 +20,9 @@ type NavigatorWithUserAgentData = Navigator & {
 };
 
 const armDownloadURL =
-  'https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.6/Tunnelful-0.1.6-arm64.dmg';
+  'https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.7/Tunnelful-0.1.7-arm64.dmg';
 const intelDownloadURL =
-  'https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.6/Tunnelful-0.1.6-x86_64.dmg';
+  'https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.7/Tunnelful-0.1.7-x86_64.dmg';
 
 function normalizedArchitecture(value?: string): Architecture {
   const architecture = value?.toLowerCase();

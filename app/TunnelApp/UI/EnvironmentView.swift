@@ -38,19 +38,15 @@ private struct EnvironmentContent: View {
         .appPageBackground()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
+                AppToolbarProgressButton(
+                    title: "重新检查",
+                    systemImage: "arrow.clockwise",
+                    help: "重新检查 cloudflared、配置与账户连接",
+                    accessibilityLabel: "重新检查运行环境",
+                    isBusy: model.isRefreshing
+                ) {
                     Task { await model.bootstrap(reportErrors: true) }
-                } label: {
-                    if model.isRefreshing {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label("重新检查", systemImage: "arrow.clockwise")
-                    }
                 }
-                .disabled(model.isRefreshing)
-                .help("重新检查 cloudflared、配置与账户连接")
-                .accessibilityLabel("重新检查运行环境")
-                .accessibilityValue(model.isRefreshing ? "正在检查" : "")
             }
         }
         .confirmationDialog(
@@ -65,10 +61,15 @@ private struct EnvironmentContent: View {
         } message: {
             Text("将直接运行 cloudflared tunnel login。登录在 Cloudflare 官方网页完成，成功后会在本机保存 cert.pem。")
         }
+        .task(id: copiedInstallCommand) {
+            guard copiedInstallCommand else { return }
+            try? await Task.sleep(for: .seconds(2))
+            copiedInstallCommand = false
+        }
     }
 
     private var summary: some View {
-        let kind: NoticeView.Kind = report.blockingIssueCount == 0
+        let kind: NoticeKind = report.blockingIssueCount == 0
             ? (report.attentionIssueCount == 0 ? .success : .info)
             : .warning
         let title: String
@@ -103,6 +104,8 @@ private struct EnvironmentContent: View {
                             NSPasteboard.general.setString("brew install cloudflared", forType: .string)
                             copiedInstallCommand = true
                         }
+                        .help("复制 brew install cloudflared")
+                        .accessibilityValue(copiedInstallCommand ? "已复制到剪贴板" : "")
                         Button("官方下载") {
                             NSWorkspace.shared.open(AppActions.cloudflaredInstallURL)
                         }
@@ -113,7 +116,7 @@ private struct EnvironmentContent: View {
                     }
                 }
 
-                Divider().padding(.leading, 48)
+                Divider().padding(.leading, AppMetrics.listDividerInset)
 
                 SetupRow(
                     number: "2",
@@ -139,7 +142,7 @@ private struct EnvironmentContent: View {
                     }
                 }
 
-                Divider().padding(.leading, 48)
+                Divider().padding(.leading, AppMetrics.listDividerInset)
 
                 SetupRow(
                     number: "3",
@@ -172,7 +175,7 @@ private struct EnvironmentContent: View {
                 ForEach(Array(report.items.enumerated()), id: \.element.id) { index, item in
                     EnvironmentCheckRow(item: item)
                     if index < report.items.count - 1 {
-                        Divider().padding(.leading, 48)
+                        Divider().padding(.leading, AppMetrics.listDividerInset)
                     }
                 }
             }
@@ -221,7 +224,7 @@ private struct SetupRow<Actions: View>: View {
             Text(number)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 24, height: 24)
+                .frame(width: AppMetrics.accessoryColumnWidth, height: AppMetrics.accessoryColumnWidth)
                 .background(.quaternary, in: Circle())
                 .accessibilityHidden(true)
 
@@ -233,6 +236,8 @@ private struct SetupRow<Actions: View>: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("第 \(number) 步，\(title)。\(detail)")
 
             Spacer(minLength: 16)
 
@@ -254,7 +259,7 @@ private struct EnvironmentCheckRow: View {
             Image(systemName: symbol)
                 .font(.body.weight(.medium))
                 .foregroundStyle(tint)
-                .frame(width: 22)
+                .frame(width: AppMetrics.accessoryColumnWidth)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -291,7 +296,7 @@ private struct EnvironmentCheckRow: View {
         switch item.state {
         case .ready: return AppPalette.statusGreen
         case .attention: return AppPalette.statusOrange
-        case .actionRequired: return .red
+        case .actionRequired: return AppPalette.statusRed
         case .information: return .secondary
         }
     }

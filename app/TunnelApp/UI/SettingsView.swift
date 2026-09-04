@@ -60,6 +60,7 @@ struct SettingsView: View {
                         .textSelection(.enabled)
                         .lineLimit(2)
                         .truncationMode(.middle)
+                        .help(model.installation?.executableURL.path ?? "未检测到 cloudflared")
                 }
                 LabeledContent("版本", value: model.installation?.version ?? "未知")
                 LabeledContent("来源", value: model.installation?.source.rawValue ?? "未知")
@@ -77,6 +78,7 @@ struct SettingsView: View {
                         .textSelection(.enabled)
                         .lineLimit(2)
                         .truncationMode(.middle)
+                        .help(model.selectedConfigURL?.path ?? "尚未导入配置")
                 }
                 Button("导入配置…") { model.chooseConfiguration() }
                     .disabled(model.isApplyingConfiguration || model.isRoutingDNS)

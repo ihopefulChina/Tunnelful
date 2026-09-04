@@ -5,7 +5,19 @@ struct TunnelsView: View {
 
     var body: some View {
         Group {
-            if model.tunnels.isEmpty {
+            if case .loading = model.tunnelDiscoveryState, model.tunnels.isEmpty {
+                ContentUnavailableView {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .controlSize(.regular)
+                        Text(emptyTitle)
+                            .font(.headline)
+                    }
+                } description: {
+                    Text(emptyMessage)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if model.tunnels.isEmpty {
                 ContentUnavailableView {
                     Label(emptyTitle, systemImage: emptySymbol)
                 } description: {
@@ -27,6 +39,9 @@ struct TunnelsView: View {
                                 .font(.caption.monospaced())
                                 .foregroundStyle(.tertiary)
                                 .textSelection(.enabled)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .help(tunnel.id)
                         }
                         .padding(.vertical, 4)
                     }
@@ -43,9 +58,10 @@ struct TunnelsView: View {
                     TableColumn("状态") { tunnel in
                         Label(
                             tunnel.deletedAt == nil ? "可用" : "已删除",
-                            systemImage: tunnel.deletedAt == nil ? "checkmark.circle" : "trash"
+                            systemImage: tunnel.deletedAt == nil ? "checkmark.circle.fill" : "trash"
                         )
-                        .foregroundStyle(tunnel.deletedAt == nil ? Color.secondary : Color.red)
+                        .foregroundStyle(tunnel.deletedAt == nil ? AppPalette.statusGreen : AppPalette.statusRed)
+                        .symbolRenderingMode(.hierarchical)
                     }
                     .width(min: 90, ideal: 110)
                 }
@@ -55,18 +71,16 @@ struct TunnelsView: View {
         .appPageBackground()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
+                AppToolbarProgressButton(
+                    title: "刷新 Tunnel",
+                    systemImage: "arrow.clockwise",
+                    help: "通过官方 cloudflared 刷新命名 Tunnel 列表",
+                    accessibilityLabel: "刷新 Tunnel 列表",
+                    isBusy: model.isRefreshingTunnels,
+                    disabled: model.isRefreshing
+                ) {
                     Task { await model.refreshTunnels() }
-                } label: {
-                    if model.isRefreshingTunnels {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label("刷新 Tunnel", systemImage: "arrow.clockwise")
-                    }
                 }
-                .disabled(model.isRefreshing || model.isRefreshingTunnels)
-                .accessibilityLabel("刷新 Tunnel 列表")
-                .accessibilityValue(model.isRefreshingTunnels ? "正在刷新" : "")
             }
         }
     }
