@@ -1,5 +1,28 @@
 import SwiftUI
 
+enum MenuBarStatusPresentation {
+    static func text(
+        process: ManagedProcessState,
+        edge: EdgeConnectionState,
+        tunnelName: String?
+    ) -> String {
+        let state: String
+        switch (process, edge) {
+        case (.running, .connected): state = "已连接 Cloudflare Edge"
+        case (.running, .degraded): state = "运行中，正在重连 Edge"
+        case (.running, .unreachable): state = "无法连接 Cloudflare Edge"
+        case (.running, .connecting): state = "正在连接 Cloudflare Edge"
+        case (.running, _): state = "Tunnel 运行中"
+        case (.starting, _): state = "Tunnel 启动中"
+        case (.failed, _): state = "Tunnel 启动失败"
+        default: state = "Tunnel 已停止"
+        }
+
+        guard let tunnelName, !tunnelName.isEmpty else { return state }
+        return "\(tunnelName)：\(state)"
+    }
+}
+
 struct MenuBarPanel: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
@@ -29,14 +52,18 @@ struct MenuBarPanel: View {
 
             if hasActiveProcess {
                 Button {
-                    model.stopTunnel()
+                    performTunnelAction {
+                        model.stopTunnel()
+                    }
                 } label: {
                     Label("停止 Tunnel", systemImage: "stop.fill")
                 }
             } else {
                 Button {
                     guard let name = model.preferredTunnelName else { return }
-                    model.startTunnel(named: name)
+                    performTunnelAction {
+                        model.startTunnel(named: name)
+                    }
                 } label: {
                     Label("启动 Tunnel", systemImage: "play.fill")
                 }
@@ -44,12 +71,14 @@ struct MenuBarPanel: View {
             }
 
             Button {
-                guard let name = model.preferredTunnelName else { return }
-                model.restartTunnel(named: name)
+                guard let name = restartTunnelName else { return }
+                performTunnelAction {
+                    model.restartTunnel(named: name)
+                }
             } label: {
                 Label("重新启动 Tunnel", systemImage: "arrow.clockwise")
             }
-            .disabled(!canControlTunnel || !hasActiveProcess)
+            .disabled(!canRestartTunnel)
 
             Divider()
 
@@ -101,6 +130,14 @@ struct MenuBarPanel: View {
         model.installation != nil && model.preferredTunnelName != nil
     }
 
+    private var canRestartTunnel: Bool {
+        model.installation != nil && hasActiveProcess && restartTunnelName != nil
+    }
+
+    private var restartTunnelName: String? {
+        process.managedTunnelName ?? model.preferredTunnelName
+    }
+
     private var hasActiveProcess: Bool {
         switch process.processState {
         case .starting, .running:
@@ -111,16 +148,11 @@ struct MenuBarPanel: View {
     }
 
     private var statusText: String {
-        switch (process.processState, process.edgeState) {
-        case (.running, .connected): return "已连接 Cloudflare Edge"
-        case (.running, .degraded): return "运行中，正在重连 Edge"
-        case (.running, .unreachable): return "无法连接 Cloudflare Edge"
-        case (.running, .connecting): return "正在连接 Cloudflare Edge"
-        case (.running, _): return "Tunnel 运行中"
-        case (.starting, _): return "Tunnel 启动中"
-        case (.failed, _): return "Tunnel 启动失败"
-        default: return "Tunnel 已停止"
-        }
+        MenuBarStatusPresentation.text(
+            process: process.processState,
+            edge: process.edgeState,
+            tunnelName: process.managedTunnelName ?? model.preferredTunnelName
+        )
     }
 
     private var statusSymbol: String {
@@ -130,6 +162,14 @@ struct MenuBarPanel: View {
             return "exclamationmark.triangle"
         case (.running, _), (.starting, _): return "arrow.clockwise.circle"
         default: return "stop.circle"
+        }
+    }
+
+    private func performTunnelAction(_ action: () -> Void) {
+        model.alertMessage = nil
+        action()
+        if model.alertMessage != nil {
+            model.openMainWindow(openWindow: openWindow)
         }
     }
 }

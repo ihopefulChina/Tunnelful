@@ -48,7 +48,8 @@ enum AppBundleLocation: Equatable, Sendable {
 }
 
 enum LaunchAgentLoginItem {
-    static let label = "app.tunnelful.mac.login"
+    static let label = AppIdentity.launchAgentLabel
+    static let legacyLabels = AppIdentity.legacyLaunchAgentLabels
 
     static func propertyListData(opening bundleURL: URL) throws -> Data {
         let contents: [String: Any] = [
@@ -56,7 +57,7 @@ enum LaunchAgentLoginItem {
             "ProgramArguments": ["/usr/bin/open", bundleURL.path],
             "RunAtLoad": true,
             "LimitLoadToSessionType": "Aqua",
-            "AssociatedBundleIdentifiers": ["app.tunnelful.mac"]
+            "AssociatedBundleIdentifiers": [AppIdentity.bundleIdentifier]
         ]
         return try PropertyListSerialization.data(fromPropertyList: contents, format: .xml, options: 0)
     }
@@ -131,18 +132,22 @@ struct SystemLaunchAtLoginManager: LaunchAtLoginManaging, @unchecked Sendable {
             break
         }
 
-        guard fileManager.fileExists(atPath: launchAgentPlistURL.path) else {
-            return .disabled
+        var hasEnabledLaunchAgent = false
+        for label in allLaunchAgentLabels {
+            let plistURL = launchAgentPlistURL(for: label)
+            guard fileManager.fileExists(atPath: plistURL.path) else { continue }
+            switch legacyPlistStatus(plistURL) {
+            case .requiresApproval:
+                return .requiresApproval
+            case .enabled:
+                hasEnabledLaunchAgent = true
+            case .notRegistered, .notFound:
+                continue
+            @unknown default:
+                continue
+            }
         }
-
-        switch legacyPlistStatus(launchAgentPlistURL) {
-        case .requiresApproval:
-            return .requiresApproval
-        case .enabled, .notRegistered, .notFound:
-            return .enabled
-        @unknown default:
-            return .enabled
-        }
+        return hasEnabledLaunchAgent ? .enabled : .disabled
     }
 
     func setEnabled(_ enabled: Bool) throws {
@@ -150,6 +155,80 @@ struct SystemLaunchAtLoginManager: LaunchAtLoginManaging, @unchecked Sendable {
             try registerFromCurrentLocation()
         } else {
             try unregisterAll()
+        }
+    }
+
+    func migrateLegacyLaunchAgentIfNeeded() throws {
+        guard AppBundleLocation.classify(
+            bundleURL: bundleURL,
+            homeDirectory: homeDirectory
+        ).blocker == nil else {
+            return
+        }
+
+        let existingLegacyLabels = LaunchAgentLoginItem.legacyLabels.filter {
+            fileManager.fileExists(atPath: launchAgentPlistURL(for: $0).path)
+        }
+        guard !existingLegacyLabels.isEmpty else { return }
+
+        let legacyRequestsLaunch = existingLegacyLabels.contains { label in
+            let status = legacyPlistStatus(launchAgentPlistURL(for: label))
+            return status == .enabled || status == .requiresApproval
+        }
+        guard legacyRequestsLaunch else {
+            try removeLaunchAgents(labels: existingLegacyLabels)
+            return
+        }
+
+        switch serviceStatus() {
+        case .enabled:
+            try removeLaunchAgents(labels: existingLegacyLabels)
+            return
+        case .requiresApproval:
+            // Keep the working previous agent until macOS approves the new item.
+            return
+        case .notRegistered, .notFound:
+            break
+        @unknown default:
+            break
+        }
+
+        var serviceError: Error?
+        do {
+            try registerService()
+        } catch {
+            serviceError = error
+        }
+        switch serviceStatus() {
+        case .enabled:
+            try removeLaunchAgents(labels: existingLegacyLabels)
+            return
+        case .requiresApproval:
+            return
+        case .notRegistered, .notFound:
+            break
+        @unknown default:
+            break
+        }
+
+        let currentPlistStatus = legacyPlistStatus(launchAgentPlistURL)
+        if currentPlistStatus == .enabled {
+            try removeLaunchAgents(labels: existingLegacyLabels)
+            return
+        }
+        if currentPlistStatus == .requiresApproval {
+            return
+        }
+
+        do {
+            try installLaunchAgent()
+            try removeLaunchAgents(labels: existingLegacyLabels)
+        } catch {
+            let details = [serviceError?.localizedDescription, error.localizedDescription]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            throw LaunchAtLoginError.registrationFailed(details)
         }
     }
 
@@ -172,21 +251,22 @@ struct SystemLaunchAtLoginManager: LaunchAtLoginManaging, @unchecked Sendable {
             if status == .notRegistered || status == .notFound {
                 try registerService()
             }
-            switch serviceStatus() {
-            case .enabled, .requiresApproval:
-                try? removeLaunchAgent()
-                return
-            case .notRegistered, .notFound:
-                break
-            @unknown default:
-                break
-            }
         } catch {
             serviceError = error
+        }
+        switch serviceStatus() {
+        case .enabled, .requiresApproval:
+            try removeLaunchAgents(labels: allLaunchAgentLabels)
+            return
+        case .notRegistered, .notFound:
+            break
+        @unknown default:
+            break
         }
 
         do {
             try installLaunchAgent()
+            try removeLaunchAgents(labels: LaunchAgentLoginItem.legacyLabels)
         } catch {
             let details = [serviceError?.localizedDescription, error.localizedDescription]
                 .compactMap { $0 }
@@ -197,22 +277,43 @@ struct SystemLaunchAtLoginManager: LaunchAtLoginManaging, @unchecked Sendable {
     }
 
     private func unregisterAll() throws {
+        var failures: [String] = []
         let status = serviceStatus()
         if status != .notRegistered && status != .notFound {
-            try unregisterService()
+            do {
+                try unregisterService()
+            } catch {
+                failures.append(error.localizedDescription)
+            }
         }
-        try removeLaunchAgent()
+        do {
+            try removeLaunchAgents(labels: allLaunchAgentLabels)
+        } catch {
+            failures.append(error.localizedDescription)
+        }
+        if !failures.isEmpty {
+            throw LaunchAtLoginError.registrationFailed(failures.joined(separator: " "))
+        }
     }
 
     private var launchAgentPlistURL: URL {
+        launchAgentPlistURL(for: LaunchAgentLoginItem.label)
+    }
+
+    private var allLaunchAgentLabels: [String] {
+        [LaunchAgentLoginItem.label] + LaunchAgentLoginItem.legacyLabels
+    }
+
+    private func launchAgentPlistURL(for label: String) -> URL {
         homeDirectory
             .appendingPathComponent("Library", isDirectory: true)
             .appendingPathComponent("LaunchAgents", isDirectory: true)
-            .appendingPathComponent("\(LaunchAgentLoginItem.label).plist")
+            .appendingPathComponent("\(label).plist")
     }
 
     private func installLaunchAgent() throws {
         let plistURL = launchAgentPlistURL
+        let previousLegacyStatus = legacyPlistStatus(plistURL)
         try fileManager.createDirectory(
             at: plistURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -222,15 +323,85 @@ struct SystemLaunchAtLoginManager: LaunchAtLoginManaging, @unchecked Sendable {
 
         let domain = "gui/\(uid)"
         let serviceTarget = "\(domain)/\(LaunchAgentLoginItem.label)"
-        _ = try? runLaunchctl(["bootout", serviceTarget])
-        _ = try? runLaunchctl(["bootstrap", domain, plistURL.path])
-        _ = try? runLaunchctl(["enable", serviceTarget])
+        var didBootstrap = false
+        var serviceMayRemainLoaded = previousLegacyStatus == .enabled
+            || previousLegacyStatus == .requiresApproval
+        do {
+            if serviceMayRemainLoaded {
+                let bootoutStatus = try runLaunchctl(["bootout", serviceTarget])
+                guard bootoutStatus == 0 else {
+                    throw launchctlFailure(command: "bootout", status: bootoutStatus)
+                }
+                serviceMayRemainLoaded = false
+            }
+
+            let bootstrapStatus = try runLaunchctl(["bootstrap", domain, plistURL.path])
+            guard bootstrapStatus == 0 else {
+                throw launchctlFailure(command: "bootstrap", status: bootstrapStatus)
+            }
+            didBootstrap = true
+            serviceMayRemainLoaded = true
+
+            let enableStatus = try runLaunchctl(["enable", serviceTarget])
+            guard enableStatus == 0 else {
+                throw launchctlFailure(command: "enable", status: enableStatus)
+            }
+        } catch {
+            var reportedError = error
+            if didBootstrap {
+                do {
+                    let cleanupStatus = try runLaunchctl(["bootout", serviceTarget])
+                    if cleanupStatus != 0 {
+                        reportedError = LaunchAtLoginError.registrationFailed(
+                            "\(error.localizedDescription) launchctl bootout 清理失败（状态码 \(cleanupStatus)）。"
+                        )
+                    } else {
+                        serviceMayRemainLoaded = false
+                    }
+                } catch {
+                    reportedError = LaunchAtLoginError.registrationFailed(
+                        "\(reportedError.localizedDescription) launchctl bootout 清理失败：\(error.localizedDescription)"
+                    )
+                }
+            }
+            if !serviceMayRemainLoaded {
+                try? fileManager.removeItem(at: plistURL)
+            }
+            throw reportedError
+        }
     }
 
-    private func removeLaunchAgent() throws {
-        let plistURL = launchAgentPlistURL
+    private func removeLaunchAgents(labels: [String]) throws {
+        var failures: [String] = []
+        for label in labels {
+            do {
+                try removeLaunchAgent(label: label)
+            } catch {
+                failures.append("\(label)：\(error.localizedDescription)")
+            }
+        }
+        if !failures.isEmpty {
+            throw LaunchAtLoginError.registrationFailed(failures.joined(separator: " "))
+        }
+    }
+
+    private func removeLaunchAgent(label: String) throws {
+        let plistURL = launchAgentPlistURL(for: label)
         let domain = "gui/\(uid)"
-        _ = try? runLaunchctl(["bootout", "\(domain)/\(LaunchAgentLoginItem.label)"])
+        if fileManager.fileExists(atPath: plistURL.path) {
+            let status = legacyPlistStatus(plistURL)
+            if status == .enabled || status == .requiresApproval {
+                let bootoutStatus = try runLaunchctl([
+                    "bootout",
+                    "\(domain)/\(label)"
+                ])
+                guard bootoutStatus == 0 else {
+                    // Keep the plist when launchd still owns the service so status
+                    // remains observable and a later disable can retry bootout.
+                    throw launchctlFailure(command: "bootout", status: bootoutStatus)
+                }
+            }
+        }
         if fileManager.fileExists(atPath: plistURL.path) {
             try fileManager.removeItem(at: plistURL)
         }
@@ -240,10 +411,17 @@ struct SystemLaunchAtLoginManager: LaunchAtLoginManaging, @unchecked Sendable {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         process.arguments = arguments
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
         try process.run()
         process.waitUntilExit()
         return process.terminationStatus
+    }
+
+    private func launchctlFailure(
+        command: String,
+        status: Int32
+    ) -> LaunchAtLoginError {
+        .registrationFailed("launchctl \(command) 失败（状态码 \(status)）。")
     }
 }

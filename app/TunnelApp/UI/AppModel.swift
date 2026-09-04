@@ -60,13 +60,19 @@ final class AppModel: ObservableObject {
     @Published private(set) var installation: CloudflaredInstallation?
     @Published private(set) var discoveredConfigURLs: [URL] = []
     @Published private(set) var configDocument: CloudflaredConfigDocument?
-    @Published var configurationDraft: CloudflaredConfigDocument?
+    @Published var configurationDraft: CloudflaredConfigDocument? {
+        didSet {
+            guard configurationDraft != oldValue else { return }
+            invalidatePendingDNSRoute()
+            lastValidationMessage = nil
+        }
+    }
     @Published private(set) var tunnels: [CloudflaredTunnel] = []
     @Published private(set) var tunnelDiscoveryState: TunnelDiscoveryState = .notChecked
     @Published private(set) var isRefreshing = false
     @Published private(set) var isRefreshingTunnels = false
     @Published private(set) var isApplyingConfiguration = false
-    @Published private(set) var originState: OriginReachabilityState = .notChecked
+    @Published private(set) var originCheck: OriginCheckSnapshot?
     @Published private(set) var lastValidationMessage: String?
     @Published private(set) var lastBackupURL: URL?
     @Published private(set) var pendingDNSPlan: DNSRoutePlan?
@@ -156,6 +162,18 @@ final class AppModel: ObservableObject {
 
     var selectedConfigURL: URL? { configDocument?.sourceURL }
 
+    var availableTunnels: [CloudflaredTunnel] {
+        tunnels.filter(\.isAvailable)
+    }
+
+    var currentOriginService: String? {
+        configDocument?.primaryIngressRule?.service
+    }
+
+    var originState: OriginReachabilityState {
+        originCheck?.result.state ?? .notChecked
+    }
+
     var hasUnsavedConfigurationDraft: Bool {
         guard let configurationDraft else { return false }
         return configurationDraft != configDocument
@@ -168,27 +186,68 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func configurationSupportsTunnelSelection(_ selection: String) -> Bool {
+        guard let configDocument else { return false }
+        let cleanSelection = selection.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanSelection.isEmpty else { return false }
+
+        let selectedTunnel = tunnels.first {
+            $0.isAvailable && $0.matchesSelection(cleanSelection)
+        }
+        if let configuredTunnel = configDocument.tunnel?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !configuredTunnel.isEmpty {
+            if configuredTunnel == cleanSelection ||
+                configuredTunnel.caseInsensitiveCompare(cleanSelection) == .orderedSame {
+                return true
+            }
+            if let selectedTunnel {
+                return configuredTunnel == selectedTunnel.id ||
+                    configuredTunnel.caseInsensitiveCompare(selectedTunnel.name) == .orderedSame
+            }
+            return false
+        }
+
+        guard let credentialName = configDocument.credentialsFile?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: "/")
+            .last
+            .map(String.init),
+              credentialName.lowercased().hasSuffix(".json") else {
+            return false
+        }
+        let credentialTunnelID = String(credentialName.dropLast(5))
+        if let selectedTunnel {
+            return credentialTunnelID.caseInsensitiveCompare(selectedTunnel.id) == .orderedSame
+        }
+        return credentialTunnelID.caseInsensitiveCompare(cleanSelection) == .orderedSame
+    }
+
     static func resolvePreferredTunnelName(
         configuredTunnel: String?,
         tunnels: [CloudflaredTunnel]
     ) -> String? {
+        let availableTunnels = tunnels.filter(\.isAvailable)
         if let configured = configuredTunnel?.trimmingCharacters(in: .whitespacesAndNewlines),
            !configured.isEmpty {
-            return tunnels.first(where: {
-                $0.id == configured || $0.name.caseInsensitiveCompare(configured) == .orderedSame
-            })?.name ?? configured
+            if let matchingTunnel = tunnels.first(where: { $0.matchesSelection(configured) }) {
+                return matchingTunnel.isAvailable ? matchingTunnel.name : nil
+            }
+            return configured
         }
-        if let dev = tunnels.first(where: { $0.name.caseInsensitiveCompare("dev") == .orderedSame }) {
+        if let dev = availableTunnels.first(where: {
+            $0.name.caseInsensitiveCompare("dev") == .orderedSame
+        }) {
             return dev.name
         }
-        return tunnels.first?.name
+        return availableTunnels.first?.name
     }
 
     var runtimeStatus: RuntimeStatus {
         RuntimeStatus(
             process: processController.processState,
             edge: processController.edgeState,
-            origin: originState
+            origin: originState(for: currentOriginService)
         )
     }
 
@@ -301,10 +360,9 @@ final class AppModel: ObservableObject {
                 discoveredConfigURLs.append(url)
             }
             lastValidationMessage = nil
-            pendingDNSPlan = nil
-            lastDNSRouteMessage = nil
+            invalidatePendingDNSRoute()
             originCheckGeneration &+= 1
-            originState = .notChecked
+            originCheck = nil
         } catch {
             alertMessage = error.localizedDescription
         }
@@ -355,6 +413,7 @@ final class AppModel: ObservableObject {
     }
 
     func startOfficialLogin() {
+        guard !isTerminating else { return }
         guard let installation else {
             alertMessage = CloudflaredError.executableNotFound.localizedDescription
             return
@@ -396,23 +455,108 @@ final class AppModel: ObservableObject {
     func checkOrigin(_ service: String) async {
         originCheckGeneration &+= 1
         let generation = originCheckGeneration
-        let normalized = service.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = Self.normalizedOriginTarget(service)
         guard let url = URL(string: normalized) else {
-            originState = .unreachable("请输入有效的 HTTP 或 HTTPS 源站 URL。")
+            originCheck = OriginCheckSnapshot(
+                target: normalized,
+                result: OriginHealthResult(
+                    state: .unreachable("请输入有效的 HTTP 或 HTTPS 源站 URL。"),
+                    latency: 0
+                )
+            )
             return
         }
-        originState = .checking
-        let result = await originChecker.check(url).state
+        originCheck = OriginCheckSnapshot(
+            target: normalized,
+            result: OriginHealthResult(state: .checking, latency: 0)
+        )
+        let result = await originChecker.check(url)
         guard generation == originCheckGeneration else { return }
-        originState = result
+        originCheck = OriginCheckSnapshot(target: normalized, result: result)
     }
 
-    func invalidatePublishPlan() {
+    func originState(for service: String?) -> OriginReachabilityState {
+        guard let service,
+              let originCheck,
+              originCheck.target == Self.normalizedOriginTarget(service) else {
+            return .notChecked
+        }
+        return originCheck.result.state
+    }
+
+    func originLatency(for service: String?) -> TimeInterval? {
+        guard let service,
+              let originCheck,
+              originCheck.target == Self.normalizedOriginTarget(service),
+              originCheck.result.state != .checking else {
+            return nil
+        }
+        return originCheck.result.latency
+    }
+
+    func invalidatePublishPlan(resetOrigin: Bool = true) {
         pendingDNSPlan = nil
         lastValidationMessage = nil
         lastDNSRouteMessage = nil
-        originCheckGeneration &+= 1
-        originState = .notChecked
+        if resetOrigin {
+            originCheckGeneration &+= 1
+            originCheck = nil
+        }
+    }
+
+    func invalidatePublishPlanIfDraftChanged(
+        tunnelName: String,
+        hostname: String,
+        service: String,
+        path: String?,
+        resetOrigin: Bool = true
+    ) {
+        guard !publishDraftMatchesPendingPlanAndSavedConfiguration(
+            tunnelName: tunnelName,
+            hostname: hostname,
+            service: service,
+            path: path
+        ) else { return }
+        invalidatePublishPlan(resetOrigin: resetOrigin)
+    }
+
+    func publishDraftMatchesPendingPlanAndSavedConfiguration(
+        tunnelName: String,
+        hostname: String,
+        service: String,
+        path: String?
+    ) -> Bool {
+        guard let pendingDNSPlan, let configDocument else { return false }
+        let cleanTunnel = tunnelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let savedTunnel = preferredTunnelName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let cleanHostname = hostname.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanService = service.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanPath = path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        let planMatchesDraft =
+            pendingDNSPlan.tunnelName.caseInsensitiveCompare(cleanTunnel) == .orderedSame &&
+            pendingDNSPlan.hostname.caseInsensitiveCompare(cleanHostname) == .orderedSame
+        let tunnelMatchesSavedConfiguration =
+            cleanTunnel.caseInsensitiveCompare(savedTunnel) == .orderedSame
+        let routeMatchesSavedConfiguration = configDocument.ingress.contains { rule in
+            guard !rule.isCatchAll else { return false }
+            let savedHostname = rule.hostname?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let savedService = rule.service.trimmingCharacters(in: .whitespacesAndNewlines)
+            let savedPath = rule.path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return cleanHostname.caseInsensitiveCompare(savedHostname) == .orderedSame &&
+                cleanService == savedService &&
+                cleanPath == savedPath
+        }
+        return planMatchesDraft && tunnelMatchesSavedConfiguration && routeMatchesSavedConfiguration
+    }
+
+    private func invalidatePendingDNSRoute() {
+        pendingDNSPlan = nil
+        lastDNSRouteMessage = nil
+    }
+
+    private static func normalizedOriginTarget(_ service: String) -> String {
+        service.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func discardConfigurationDraft() {
@@ -472,10 +616,47 @@ final class AppModel: ObservableObject {
             return
         }
 
+        let cleanTunnelName = tunnelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanHostname = hostname.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanService = service.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPath = path?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanPath = normalizedPath?.isEmpty == false ? normalizedPath : nil
+        guard !cleanTunnelName.isEmpty, !cleanTunnelName.hasPrefix("-") else {
+            alertMessage = "Tunnel 名称不能为空，也不能以连字符开头。"
+            return
+        }
+        guard !cleanHostname.isEmpty,
+              cleanHostname.contains("."),
+              !cleanHostname.hasPrefix("-"),
+              !cleanHostname.contains("://"),
+              !cleanHostname.contains(where: \.isWhitespace) else {
+            alertMessage = "请输入不含协议或空格的完整域名。"
+            return
+        }
+        guard let originURL = URL(string: cleanService),
+              let scheme = originURL.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              originURL.host != nil else {
+            alertMessage = "请输入包含 HTTP 或 HTTPS 协议的有效源站 URL。"
+            return
+        }
+        if let knownTunnel = tunnels.first(where: { $0.matchesSelection(cleanTunnelName) }),
+           !knownTunnel.isAvailable {
+            alertMessage = "所选 Tunnel 已删除，无法发布或启动。请改选一个可用 Tunnel。"
+            return
+        }
+        guard configurationSupportsTunnelSelection(cleanTunnelName) else {
+            alertMessage = "所选 Tunnel 与当前配置的 tunnel / credentials-file 不匹配。请导入这个 Tunnel 的本地配置，避免把专属凭据配给其他 Tunnel。"
+            return
+        }
+
         isApplyingConfiguration = true
         defer { isApplyingConfiguration = false }
 
-        document.upsert(hostname: hostname, path: path, service: service)
+        document.tunnel = tunnels.first(where: {
+            $0.isAvailable && $0.matchesSelection(cleanTunnelName)
+        })?.id ?? cleanTunnelName
+        document.upsert(hostname: cleanHostname, path: cleanPath, service: cleanService)
         let localErrors = document.validationIssues().filter { $0.severity == .error }
         guard localErrors.isEmpty else {
             alertMessage = localErrors.map(\.message).joined(separator: " ")
@@ -502,8 +683,8 @@ final class AppModel: ObservableObject {
             lastBackupURL = saveResult.backupURL
             lastValidationMessage = validation.isEmpty ? "官方校验通过。" : validation
             pendingDNSPlan = client.dnsRoutePlan(
-                tunnelName: tunnelName.trimmingCharacters(in: .whitespacesAndNewlines),
-                hostname: hostname.trimmingCharacters(in: .whitespacesAndNewlines)
+                tunnelName: cleanTunnelName,
+                hostname: cleanHostname
             )
         } catch is CancellationError {
             return
@@ -566,6 +747,7 @@ final class AppModel: ObservableObject {
         do {
             let output = try await routeTask.value
             guard !isTerminating else { return }
+            pendingDNSPlan = nil
             lastDNSRouteMessage = output.isEmpty ? "DNS 路由已配置。" : output
         } catch is CancellationError {
             return
@@ -617,6 +799,7 @@ final class AppModel: ObservableObject {
             configurationDraft = document
             lastBackupURL = result.backupURL
             lastValidationMessage = output.isEmpty ? "官方校验通过。" : output
+            invalidatePendingDNSRoute()
         } catch is CancellationError {
             return
         } catch let error as CloudflaredError where error == .commandCancelled {
@@ -711,6 +894,7 @@ final class AppModel: ObservableObject {
     }
 
     func startTunnel(named tunnelName: String) {
+        guard !isTerminating else { return }
         guard let installation else {
             alertMessage = CloudflaredError.executableNotFound.localizedDescription
             return
@@ -722,6 +906,10 @@ final class AppModel: ObservableObject {
         }
         guard !name.hasPrefix("-") else {
             alertMessage = "Tunnel 名称不能以连字符开头。"
+            return
+        }
+        guard !isKnownDeletedTunnel(name) else {
+            alertMessage = "所选 Tunnel 已删除，无法启动。请改选一个可用 Tunnel。"
             return
         }
         do {
@@ -732,8 +920,10 @@ final class AppModel: ObservableObject {
                     tunnel: name,
                     configURL: selectedConfigURL,
                     transportProtocol: transportProtocol
-                )
+                ),
+                tunnelName: name
             )
+            startupAutomationMessage = nil
         } catch {
             alertMessage = error.localizedDescription
         }
@@ -742,12 +932,14 @@ final class AppModel: ObservableObject {
     func stopTunnel() {
         do {
             try processController.stop()
+            startupAutomationMessage = nil
         } catch {
             alertMessage = error.localizedDescription
         }
     }
 
     func restartTunnel(named tunnelName: String) {
+        guard !isTerminating else { return }
         guard let installation else {
             alertMessage = CloudflaredError.executableNotFound.localizedDescription
             return
@@ -761,6 +953,10 @@ final class AppModel: ObservableObject {
             alertMessage = "Tunnel 名称不能以连字符开头。"
             return
         }
+        guard !isKnownDeletedTunnel(name) else {
+            alertMessage = "所选 Tunnel 已删除，无法重新启动。请改选一个可用 Tunnel。"
+            return
+        }
         let client = CloudflaredClient(installation: installation)
         do {
             try processController.restart(
@@ -769,8 +965,10 @@ final class AppModel: ObservableObject {
                     tunnel: name,
                     configURL: selectedConfigURL,
                     transportProtocol: transportProtocol
-                )
+                ),
+                tunnelName: name
             )
+            startupAutomationMessage = nil
         } catch {
             alertMessage = error.localizedDescription
         }
@@ -786,12 +984,20 @@ final class AppModel: ObservableObject {
 
     private func retryTunnel(using transport: TunnelTransportProtocol) {
         transportProtocol = transport
-        guard let name = preferredTunnelName else { return }
         switch processController.processState {
         case .running, .starting:
+            guard let name = processController.managedTunnelName else { return }
             restartTunnel(named: name)
         default:
+            guard let name = preferredTunnelName else { return }
             startTunnel(named: name)
+        }
+    }
+
+    private func isKnownDeletedTunnel(_ name: String) -> Bool {
+        tunnels.contains {
+            !$0.isAvailable &&
+                ($0.id == name || $0.name.caseInsensitiveCompare(name) == .orderedSame)
         }
     }
 
@@ -807,6 +1013,7 @@ final class AppModel: ObservableObject {
     }
 
     private func evaluateStartupAutomationIfNeeded() {
+        guard !isTerminating else { return }
         guard !hasEvaluatedStartupAutomation else { return }
         hasEvaluatedStartupAutomation = true
         guard startTunnelOnLaunch else {
@@ -824,8 +1031,11 @@ final class AppModel: ObservableObject {
         guard processController.processState == .stopped else { return }
         startupAutomationMessage = "正在按设置启动当前 Tunnel。"
         startTunnel(named: tunnelName)
-        if case .running = processController.processState {
+        switch processController.processState {
+        case .running, .starting:
             startupAutomationMessage = "已按设置启动当前 Tunnel。"
+        case .failed, .stopped:
+            startupAutomationMessage = "自动启动 Tunnel 未完成；请查看错误提示后重试。"
         }
     }
 

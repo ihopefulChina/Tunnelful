@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -104,10 +105,12 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .scrollIndicators(.never)
-        .hideLegacyScrollers()
         .navigationTitle("设置")
         .padding(12)
         .onAppear { model.refreshLaunchAtLoginState() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.refreshLaunchAtLoginState()
+        }
+        .presentModelAlerts(from: model)
     }
 }

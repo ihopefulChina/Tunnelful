@@ -29,6 +29,15 @@ final class AppUpdaterTests: XCTestCase {
         XCTAssertEqual(driver.checkCount, 1)
     }
 
+    func testReleaseSmokeTestDoesNotStartSparkleUpdater() {
+        let updater = AppUpdater(releaseSmokeTest: true)
+
+        XCTAssertFalse(updater.canCheckForUpdates)
+        XCTAssertFalse(updater.automaticallyChecksForUpdates)
+        updater.checkForUpdates()
+        XCTAssertFalse(updater.canCheckForUpdates)
+    }
+
     func testNumericBuildNumbersCompareAsIntegers() {
         XCTAssertTrue(AppUpdateVersion.isNewer("11", than: "9"))
         XCTAssertFalse(AppUpdateVersion.isNewer("5", than: "9"))

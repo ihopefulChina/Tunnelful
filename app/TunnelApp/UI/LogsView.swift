@@ -6,6 +6,8 @@ struct LogsView: View {
     @State private var searchText = ""
     @State private var stream: StreamFilter = .all
     @State private var isConfirmingClear = false
+    @State private var copiedLogs = false
+    @State private var copyFeedbackGeneration = 0
 
     private enum StreamFilter: String, CaseIterable, Identifiable {
         case all = "全部"
@@ -35,9 +37,9 @@ struct LogsView: View {
         Group {
             if filteredLogs.isEmpty {
                 ContentUnavailableView {
-                    Label(searchText.isEmpty ? "暂无日志" : "没有匹配的日志", systemImage: "doc.text")
+                    Label(emptyTitle, systemImage: "doc.text")
                 } description: {
-                    Text(searchText.isEmpty ? "启动 Tunnel 后，这里会实时显示已脱敏的进程输出。" : "请调整搜索或来源筛选。")
+                    Text(emptyMessage)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -64,7 +66,6 @@ struct LogsView: View {
                     }
                 }
                 .tableStyle(.inset(alternatesRowBackgrounds: true))
-                .scrollIndicators(.never)
             }
         }
         .appPageBackground()
@@ -85,10 +86,14 @@ struct LogsView: View {
                 Button {
                     copyLogs()
                 } label: {
-                    Label("复制", systemImage: "doc.on.doc")
+                    Label(
+                        copiedLogs ? "已复制" : "复制",
+                        systemImage: copiedLogs ? "checkmark" : "doc.on.doc"
+                    )
                 }
                 .disabled(filteredLogs.isEmpty)
-                .help("复制当前筛选后的日志")
+                .help(copiedLogs ? "已复制当前筛选后的日志" : "复制当前筛选后的日志")
+                .accessibilityValue(copiedLogs ? "已复制到剪贴板" : "")
             }
 
             ToolbarItem {
@@ -113,6 +118,12 @@ struct LogsView: View {
                 }
             }
         }
+        .task(id: copyFeedbackGeneration) {
+            guard copiedLogs else { return }
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            copiedLogs = false
+        }
     }
 
     private func copyLogs() {
@@ -120,7 +131,20 @@ struct LogsView: View {
             "\($0.timestamp.formatted(.iso8601)) [\($0.stream.rawValue)] \($0.message)"
         }.joined(separator: "\n")
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        if NSPasteboard.general.setString(text, forType: .string) {
+            copiedLogs = true
+            copyFeedbackGeneration &+= 1
+        }
+    }
+
+    private var emptyTitle: String {
+        process.logs.isEmpty ? "暂无日志" : "没有匹配的日志"
+    }
+
+    private var emptyMessage: String {
+        process.logs.isEmpty
+            ? "启动 Tunnel 后，这里会实时显示已脱敏的进程输出。"
+            : "请调整搜索或来源筛选。"
     }
 
     private func streamSymbol(_ stream: LogEntry.Stream) -> String {

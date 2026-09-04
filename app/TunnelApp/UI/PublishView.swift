@@ -10,11 +10,8 @@ struct PublishView: View {
     @State private var service = ""
     @State private var path = ""
     @State private var isShowingDNSConfirmation = false
-    @State private var editedFields: Set<Field> = []
-
-    private enum Field: Hashable {
-        case tunnel, hostname, service
-    }
+    @State private var copiedDNSCommand = false
+    @State private var copyFeedbackGeneration = 0
 
     var body: some View {
         ScrollView {
@@ -36,43 +33,63 @@ struct PublishView: View {
         }
         .appPageBackground()
         .onAppear {
-            applyDefaultsFromCurrentConfiguration()
+            resetDefaultsFromCurrentConfiguration()
         }
         .onChange(of: model.configDocument) { _, _ in
-            applyDefaultsFromCurrentConfiguration()
+            if !model.publishDraftMatchesPendingPlanAndSavedConfiguration(
+                tunnelName: tunnelName,
+                hostname: hostname,
+                service: service,
+                path: path
+            ) {
+                resetDefaultsFromCurrentConfiguration()
+            }
+        }
+        .onChange(of: model.availableTunnels) { _, _ in
+            normalizeTunnelSelection()
         }
         .onChange(of: tunnelName) { _, _ in
-            editedFields.insert(.tunnel)
-            model.invalidatePublishPlan()
+            invalidatePublishPlanForCurrentDraft(resetOrigin: false)
         }
         .onChange(of: hostname) { _, _ in
-            editedFields.insert(.hostname)
-            model.invalidatePublishPlan()
+            invalidatePublishPlanForCurrentDraft(resetOrigin: false)
         }
         .onChange(of: service) { _, _ in
-            editedFields.insert(.service)
-            model.invalidatePublishPlan()
+            invalidatePublishPlanForCurrentDraft()
         }
-        .onChange(of: path) { _, _ in model.invalidatePublishPlan() }
+        .onChange(of: path) { _, _ in invalidatePublishPlanForCurrentDraft(resetOrigin: false) }
+        .task(id: copyFeedbackGeneration) {
+            guard copiedDNSCommand else { return }
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            copiedDNSCommand = false
+        }
     }
 
     private var tunnelSection: some View {
         stepPanel(
             title: "选择命名 Tunnel",
-            subtitle: "它将用于 DNS 路由计划和连接器进程。"
+            subtitle: "它将用于 DNS 路由计划和连接器进程，且必须与当前配置及专属凭据一致。"
         ) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Tunnel")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
-                if model.tunnels.isEmpty {
+                if model.availableTunnels.isEmpty {
                     TextField("Tunnel 名称", text: $tunnelName, prompt: Text("dev"))
                         .textFieldStyle(.roundedBorder)
                         .accessibilityHint(visibleTunnelError ?? "输入要发布的命名 Tunnel")
                 } else {
                     Picker("Tunnel", selection: $tunnelName) {
-                        ForEach(model.tunnels) { tunnel in
-                            Text(tunnel.name).tag(tunnel.name)
+                        if !model.availableTunnels.contains(where: {
+                            $0.matchesSelection(tunnelName)
+                        }), !tunnelName.isEmpty {
+                            Text("\(tunnelName)（未验证）").tag(tunnelName)
+                        }
+                        ForEach(model.availableTunnels) { tunnel in
+                            Text(tunnel.name).tag(
+                                tunnel.matchesSelection(tunnelName) ? tunnelName : tunnel.name
+                            )
                         }
                     }
                     .pickerStyle(.menu)
@@ -123,11 +140,19 @@ struct PublishView: View {
                 }
                 .disabled(serviceError != nil || service.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-                Label(model.originState.label, systemImage: StatusAppearance.originSymbol(model.originState))
-                    .foregroundStyle(StatusAppearance.originTint(model.originState))
+                Label(publishOriginState.label, systemImage: StatusAppearance.originSymbol(publishOriginState))
+                    .foregroundStyle(StatusAppearance.originTint(publishOriginState))
                     .symbolRenderingMode(.hierarchical)
-                    .accessibilityLabel("源站状态：\(model.originState.label)")
+                    .accessibilityLabel("源站状态：\(publishOriginState.label)")
                 Spacer(minLength: 0)
+            }
+
+            if let message = publishOriginState.failureMessage {
+                FieldErrorText(message: message)
+            } else if let latency = model.originLatency(for: service) {
+                Text("响应耗时 \(formattedLatency(latency))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .disabled(model.isRoutingDNS)
@@ -196,10 +221,14 @@ struct PublishView: View {
                         Button {
                             copy(plan.displayCommand)
                         } label: {
-                            Label("复制 DNS 命令", systemImage: "doc.on.doc")
+                            Label(
+                                copiedDNSCommand ? "已复制" : "复制 DNS 命令",
+                                systemImage: copiedDNSCommand ? "checkmark" : "doc.on.doc"
+                            )
                         }
                         .disabled(model.isRoutingDNS)
                         .help("复制将要执行的 cloudflared DNS 命令")
+                        .accessibilityValue(copiedDNSCommand ? "已复制到剪贴板" : "")
 
                         Button {
                             isShowingDNSConfirmation = true
@@ -316,7 +345,9 @@ struct PublishView: View {
     private var ingressPreview: String {
         let host = hostname.isEmpty ? "域名" : hostname
         let origin = service.isEmpty ? "源站" : service
-        return "\(host) → \(origin)"
+        let pathValue = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        let route = pathValue.isEmpty ? host : "\(host) \(pathValue)"
+        return "\(route) → \(origin)"
     }
 
     private var routePlan: DNSRoutePlan {
@@ -338,6 +369,13 @@ struct PublishView: View {
         let value = tunnelName.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.isEmpty { return nil }
         if value.hasPrefix("-") { return "Tunnel 名称不能以连字符开头。" }
+        if let knownTunnel = model.tunnels.first(where: { $0.matchesSelection(value) }),
+           !knownTunnel.isAvailable {
+            return "这个 Tunnel 已删除，请改选一个可用 Tunnel。"
+        }
+        if model.configDocument != nil, !model.configurationSupportsTunnelSelection(value) {
+            return "所选 Tunnel 与当前配置的 tunnel / credentials-file 不匹配，请先导入这个 Tunnel 的本地配置。"
+        }
         return nil
     }
 
@@ -353,15 +391,19 @@ struct PublishView: View {
     }
 
     private var visibleTunnelError: String? {
-        editedFields.contains(.tunnel) ? tunnelError : nil
+        tunnelError
     }
 
     private var visibleHostnameError: String? {
-        editedFields.contains(.hostname) ? hostnameError : nil
+        hostnameError
     }
 
     private var visibleServiceError: String? {
-        editedFields.contains(.service) ? serviceError : nil
+        serviceError
+    }
+
+    private var publishOriginState: OriginReachabilityState {
+        model.originState(for: service)
     }
 
     private var isFormValid: Bool {
@@ -383,25 +425,42 @@ struct PublishView: View {
     private func copy(_ value: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
+        copiedDNSCommand = true
+        copyFeedbackGeneration &+= 1
     }
 
-    private func applyDefaultsFromCurrentConfiguration() {
-        if tunnelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           let preferred = model.preferredTunnelName {
-            tunnelName = preferred
+    private func resetDefaultsFromCurrentConfiguration() {
+        let rule = model.configDocument?.primaryIngressRule
+        tunnelName = model.preferredTunnelName ?? ""
+        hostname = rule?.hostname?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        service = rule?.service.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        path = rule?.path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func invalidatePublishPlanForCurrentDraft(resetOrigin: Bool = true) {
+        model.invalidatePublishPlanIfDraftChanged(
+            tunnelName: tunnelName,
+            hostname: hostname,
+            service: service,
+            path: path,
+            resetOrigin: resetOrigin
+        )
+    }
+
+    private func normalizeTunnelSelection() {
+        let value = tunnelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matchesDeletedTunnel = model.tunnels.contains {
+            !$0.isAvailable && $0.matchesSelection(value)
         }
-        if hostname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           let firstHostname = model.configDocument?.ingress
-            .compactMap(\.hostname)
-            .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
-            .first(where: { !$0.isEmpty }) {
-            hostname = firstHostname
+        if value.isEmpty || matchesDeletedTunnel {
+            tunnelName = model.preferredTunnelName ?? ""
         }
-        if service.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           let firstService = model.configDocument?.ingress
-            .first(where: { !$0.isCatchAll && !$0.service.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
-            .service {
-            service = firstService
+    }
+
+    private func formattedLatency(_ latency: TimeInterval) -> String {
+        if latency < 1 {
+            return "\(Int((latency * 1_000).rounded())) 毫秒"
         }
+        return "\(latency.formatted(.number.precision(.fractionLength(1)))) 秒"
     }
 }

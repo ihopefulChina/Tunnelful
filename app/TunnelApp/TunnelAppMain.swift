@@ -1,7 +1,15 @@
 import AppKit
+import Foundation
 import SwiftUI
 
 enum AppIdentity {
+    static let bundleIdentifier = "app.ihopeful.Tunnelful"
+    static let legacyBundleIdentifier = "app.tunnelful.mac"
+    static let launchAgentLabel = "\(bundleIdentifier).login"
+    static let legacyLaunchAgentLabels = ["\(legacyBundleIdentifier).login"]
+    static let releaseSmokeTestEnvironmentKey = "TUNNELFUL_RELEASE_SMOKE_TEST"
+    static let releaseSmokeTestDefaultsSuite = "\(bundleIdentifier).release-smoke-test"
+
     static var displayName: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
             ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
@@ -18,7 +26,62 @@ enum AppIdentity {
 }
 
 extension Notification.Name {
-    static let tunnelfulOpenMainWindow = Notification.Name("app.tunnelful.mac.openMainWindow")
+    static let tunnelfulOpenMainWindow = Notification.Name("\(AppIdentity.bundleIdentifier).openMainWindow")
+}
+
+enum AppDomainMigration {
+    private static let completionKey = "bundleIdentifierMigrationFromAppTunnelfulMacCompleted"
+
+    static func isReleaseSmokeTest(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        environment[AppIdentity.releaseSmokeTestEnvironmentKey] == "1"
+    }
+
+    static func applicationUserDefaults(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        smokeTestSuiteName: String = AppIdentity.releaseSmokeTestDefaultsSuite
+    ) -> UserDefaults {
+        if isReleaseSmokeTest(environment: environment) {
+            guard let isolatedDefaults = UserDefaults(
+                suiteName: smokeTestSuiteName
+            ) else {
+                preconditionFailure("无法创建发布 smoke-test 的隔离偏好域。")
+            }
+            isolatedDefaults.removePersistentDomain(
+                forName: smokeTestSuiteName
+            )
+            return isolatedDefaults
+        }
+
+        migrateLegacyDefaultsIfNeeded(environment: environment)
+        return .standard
+    }
+
+    @discardableResult
+    static func migrateLegacyDefaultsIfNeeded(
+        userDefaults: UserDefaults = .standard,
+        legacyDomain: String = AppIdentity.legacyBundleIdentifier,
+        currentDomain: String = AppIdentity.bundleIdentifier,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        guard !isReleaseSmokeTest(environment: environment),
+              legacyDomain != currentDomain else {
+            return false
+        }
+
+        var currentValues = userDefaults.persistentDomain(forName: currentDomain) ?? [:]
+        guard currentValues[completionKey] as? Bool != true else { return false }
+
+        if let legacyValues = userDefaults.persistentDomain(forName: legacyDomain) {
+            for (key, value) in legacyValues where currentValues[key] == nil {
+                currentValues[key] = value
+            }
+        }
+        currentValues[completionKey] = true
+        userDefaults.setPersistentDomain(currentValues, forName: currentDomain)
+        return true
+    }
 }
 
 @MainActor
@@ -31,7 +94,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var processController: TunnelProcessController?
     weak var loginController: CloudflaredLoginController?
     weak var model: AppModel?
-    private var isAwaitingProcessShutdown = false
+    var isAwaitingProcessShutdown = false
+    var terminationRiskConfirmationOverride: ((Bool, Bool) -> Bool)?
     private var didStartBootstrap = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -47,6 +111,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWindow.willCloseNotification,
             object: nil
         )
+        // A SwiftUI Window can become key before these observers are installed.
+        // Promote the LSUIElement app on first launch so its visible main window
+        // gets the normal active title bar, Dock icon, and system menu.
+        ApplicationActivation.showSystemMenu()
         startBootstrapIfNeeded()
     }
 
@@ -69,7 +137,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func windowDidBecomeKey(_ notification: Notification) {
         guard let window = notification.object as? NSWindow, window.canBecomeKey else { return }
-        NativeWindowAppearance.apply(to: window)
+        if NativeWindowAppearance.isMainWindow(window) {
+            NativeWindowAppearance.apply(to: window)
+        }
         ApplicationActivation.showSystemMenu()
     }
 
@@ -81,6 +151,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !isAwaitingProcessShutdown else { return .terminateLater }
+
+        if requiresTerminationConfirmation,
+           !confirmTerminationRisks() {
+            return .terminateCancel
+        }
+
         let configurationIsRunning = model?.beginTermination() == true
         let tunnelIsRunning: Bool
         if let processController {
@@ -95,7 +172,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard tunnelIsRunning || loginIsRunning || configurationIsRunning else {
             return .terminateNow
         }
-        guard !isAwaitingProcessShutdown else { return .terminateLater }
         isAwaitingProcessShutdown = true
 
         var pendingCompletions = 3
@@ -121,6 +197,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             finishOne()
         }
         return .terminateLater
+    }
+
+    private var requiresTerminationConfirmation: Bool {
+        model?.hasUnsavedConfigurationDraft == true || model?.isRoutingDNS == true
+    }
+
+    private func confirmTerminationRisks() -> Bool {
+        guard let model else { return true }
+
+        let hasUnsavedDraft = model.hasUnsavedConfigurationDraft
+        let isRoutingDNS = model.isRoutingDNS
+        if let terminationRiskConfirmationOverride {
+            return terminationRiskConfirmationOverride(hasUnsavedDraft, isRoutingDNS)
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = terminationConfirmationTitle(
+            hasUnsavedDraft: hasUnsavedDraft,
+            isRoutingDNS: isRoutingDNS
+        )
+
+        var details: [String] = []
+        if hasUnsavedDraft {
+            details.append("Ingress 配置中有尚未保存的更改，退出后这些更改会丢失。")
+        }
+        if isRoutingDNS {
+            details.append(
+                "Cloudflare DNS 路由仍在配置。退出会停止本地等待，但远端结果未知且可能已经生效；退出后请先到 Cloudflare DNS 核对记录。"
+            )
+        }
+        alert.informativeText = details.joined(separator: "\n\n")
+        alert.addButton(withTitle: "取消退出")
+        alert.addButton(withTitle: hasUnsavedDraft ? "放弃更改并退出" : "仍然退出")
+
+        ApplicationActivation.showSystemMenu()
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+
+    private func terminationConfirmationTitle(
+        hasUnsavedDraft: Bool,
+        isRoutingDNS: Bool
+    ) -> String {
+        switch (hasUnsavedDraft, isRoutingDNS) {
+        case (true, true): return "放弃更改并中断 DNS 配置？"
+        case (true, false): return "放弃未保存的更改并退出？"
+        case (false, true): return "DNS 配置尚未结束，仍然退出？"
+        case (false, false): return "退出 Tunnelful？"
+        }
     }
 
     deinit {
@@ -170,11 +294,31 @@ struct TunnelAppMain: App {
     @StateObject private var updater: AppUpdater
 
     init() {
+        let environment = ProcessInfo.processInfo.environment
+        let isReleaseSmokeTest = AppDomainMigration.isReleaseSmokeTest(environment: environment)
+        let userDefaults = AppDomainMigration.applicationUserDefaults(environment: environment)
         let controller = TunnelProcessController()
-        let appModel = AppModel(processController: controller)
+        let launchAtLoginManager = SystemLaunchAtLoginManager()
+        var launchAgentMigrationError: String?
+        if !isReleaseSmokeTest {
+            do {
+                try launchAtLoginManager.migrateLegacyLaunchAgentIfNeeded()
+            } catch {
+                launchAgentMigrationError =
+                    "旧版登录项仍被保留，自动迁移未完成：\(error.localizedDescription)"
+            }
+        }
+        let appModel = AppModel(
+            processController: controller,
+            launchAtLoginManager: launchAtLoginManager,
+            userDefaults: userDefaults
+        )
+        appModel.alertMessage = launchAgentMigrationError
         _processController = StateObject(wrappedValue: controller)
         _model = StateObject(wrappedValue: appModel)
-        _updater = StateObject(wrappedValue: AppUpdater())
+        _updater = StateObject(
+            wrappedValue: AppUpdater(releaseSmokeTest: isReleaseSmokeTest)
+        )
         appDelegate.processController = controller
         appDelegate.loginController = appModel.loginController
         appDelegate.model = appModel
@@ -204,6 +348,7 @@ struct TunnelAppMain: App {
             Image(systemName: menuBarSymbol)
                 .symbolRenderingMode(.monochrome)
                 .accessibilityLabel(AppIdentity.displayName)
+                .accessibilityValue(menuBarAccessibilityValue)
         }
         .menuBarExtraStyle(.menu)
 
@@ -219,6 +364,14 @@ struct TunnelAppMain: App {
         MenuBarStatusSymbol.name(
             process: processController.processState,
             edge: processController.edgeState
+        )
+    }
+
+    private var menuBarAccessibilityValue: String {
+        MenuBarStatusPresentation.text(
+            process: processController.processState,
+            edge: processController.edgeState,
+            tunnelName: processController.managedTunnelName ?? model.preferredTunnelName
         )
     }
 }

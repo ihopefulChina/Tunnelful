@@ -29,7 +29,8 @@ jobs:
           set -euo pipefail
           grep -Fq 'secrets.TUNNELFUL_SPARKLE_ED_PRIVATE_KEY' .github/workflows/publish-app.yml
           grep -Fq 'release/appcast.xml' .github/workflows/publish-app.yml
-          grep -Fq "gh release download --pattern 'appcast.xml'" .github/workflows/pages.yml
+          grep -Fq 'gh release download "v' .github/workflows/pages.yml
+          grep -Fq -- "--pattern 'appcast.xml'" .github/workflows/pages.yml
 
   macos-app:
     name: macOS 应用（${{ matrix.architecture }}）

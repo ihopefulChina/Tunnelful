@@ -12,7 +12,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
-for command_name in xcodebuild codesign hdiutil ditto lipo plutil shasum strip otool install_name_tool; do
+for command_name in xcodebuild codesign hdiutil ditto lipo plutil shasum strip otool install_name_tool xmllint; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     echo "缺少发布命令：$command_name" >&2
     exit 1
@@ -22,8 +22,11 @@ done
 version="$(tr -d '[:space:]' < "$release_version_file")"
 app_version="$(sed -nE 's/^[[:space:]]*MARKETING_VERSION[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"
 configured_release_version="$(sed -nE 's/^[[:space:]]*TUNNELFUL_RELEASE_VERSION[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"
+configured_bundle_identifier="$(sed -nE 's/^[[:space:]]*PRODUCT_BUNDLE_IDENTIFIER[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"
+expected_bundle_identifier='app.ihopeful.Tunnelful'
+legacy_identity_build_cutoff='26'
 expected_app_version="${version%%-*}"
-if [[ -z "$version" || -z "$app_version" || -z "$configured_release_version" ]]; then
+if [[ -z "$version" || -z "$app_version" || -z "$configured_release_version" || -z "$configured_bundle_identifier" ]]; then
   echo '未能读取发布版本或应用版本。' >&2
   exit 1
 fi
@@ -39,6 +42,10 @@ if [[ "$configured_release_version" != "$version" ]]; then
   echo "应用完整版本 $configured_release_version 与根目录发布版本 $version 不一致。" >&2
   exit 1
 fi
+if [[ "$configured_bundle_identifier" != "$expected_bundle_identifier" ]]; then
+  echo "应用 Bundle ID $configured_bundle_identifier 与发布身份 $expected_bundle_identifier 不一致。" >&2
+  exit 1
+fi
 
 base_build="$(sed -nE 's/^[[:space:]]*CURRENT_PROJECT_VERSION[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"
 if [[ ! "$base_build" =~ ^[0-9]+$ ]] || (( base_build < 5 )) || (( base_build % 2 == 0 )); then
@@ -47,6 +54,10 @@ if [[ ! "$base_build" =~ ^[0-9]+$ ]] || (( base_build < 5 )) || (( base_build % 
 fi
 arm64_build="$base_build"
 x86_64_build="$((base_build - 1))"
+if [[ ! "$legacy_identity_build_cutoff" =~ ^[0-9]+$ ]] || (( x86_64_build < legacy_identity_build_cutoff )); then
+  echo "新 Bundle ID 的最低内部版本必须大于等于旧身份迁移门槛 $legacy_identity_build_cutoff。" >&2
+  exit 1
+fi
 sparkle_feed_url='https://ihopefulchina.github.io/Tunnelful/appcast.xml'
 sparkle_public_key='0hyxOLR9zBFNvSdozSz0hALE/wHrk72Vsad4KxqpyM0='
 release_notes_path="$project_root/.github/release-notes/$version.md"
@@ -286,8 +297,9 @@ for release_architecture in "${release_architectures[@]}"; do
 done
 
 generate_sparkle_appcast() {
-  local sparkle_dir generate_appcast private_key_path appcast_dir
+  local sparkle_dir generate_appcast private_key_path appcast_dir sparkle_home sign_update
   local arm64_dmg x86_64_dmg
+  local appcast_item_count migration_marker_count
   sparkle_dir="$work_dir/DerivedData-arm64/SourcePackages/artifacts/sparkle/Sparkle"
   generate_appcast="$sparkle_dir/bin/generate_appcast"
   if [[ ! -x "$generate_appcast" ]]; then
@@ -330,9 +342,22 @@ generate_sparkle_appcast() {
     --ed-key-file "$private_key_path" \
     --download-url-prefix "https://github.com/ihopefulChina/Tunnelful/releases/download/v$version/" \
     --link "https://github.com/ihopefulChina/Tunnelful/releases/tag/v$version" \
+    --informational-update-versions "<$legacy_identity_build_cutoff" \
     --embed-release-notes \
     --maximum-deltas 0 \
     "$appcast_dir"
+
+  # 0.1.9 及更早版本使用 app.tunnelful.mac。Sparkle 把 Bundle ID 视为
+  # 永久应用身份，旧身份不能安全地用普通应用包原地替换为新身份。
+  # 因此所有旧 host build（arm64 最高 25、x86_64 最高 24）只看到
+  # “前往网页下载”的信息型更新；新身份从 build 26 起恢复普通自更新。
+  xmllint --noout "$appcast_dir/appcast.xml"
+  appcast_item_count="$(xmllint --xpath "count(//*[local-name()='item'])" "$appcast_dir/appcast.xml")"
+  migration_marker_count="$(xmllint --xpath "count(//*[local-name()='item']/*[local-name()='informationalUpdate']/*[local-name()='belowVersion' and text()='$legacy_identity_build_cutoff'])" "$appcast_dir/appcast.xml")"
+  if [[ "$appcast_item_count" == "0" || "$migration_marker_count" != "$appcast_item_count" ]]; then
+    echo "Sparkle 更新源没有为全部条目保留旧 Bundle ID 的信息型迁移门槛。" >&2
+    exit 1
+  fi
 
   ditto "$appcast_dir/appcast.xml" "$output_dir/appcast.xml"
   ditto "$appcast_dir/appcast.xml" "$project_root/appcast.xml"

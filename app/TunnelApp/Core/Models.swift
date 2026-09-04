@@ -18,6 +18,14 @@ struct CloudflaredTunnel: Identifiable, Equatable, Sendable {
     let createdAt: Date?
     let deletedAt: Date?
     let connectionCount: Int
+
+    var isAvailable: Bool { deletedAt == nil }
+
+    func matchesSelection(_ value: String) -> Bool {
+        let cleanValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return id.caseInsensitiveCompare(cleanValue) == .orderedSame ||
+            name.caseInsensitiveCompare(cleanValue) == .orderedSame
+    }
 }
 
 struct CommandResult: Equatable, Sendable {
@@ -157,6 +165,16 @@ enum OriginReachabilityState: Equatable, Sendable {
         case .unreachable: return "无法访问"
         }
     }
+
+    var failureMessage: String? {
+        guard case let .unreachable(message) = self else { return nil }
+        return message
+    }
+}
+
+struct OriginCheckSnapshot: Equatable, Sendable {
+    let target: String
+    let result: OriginHealthResult
 }
 
 struct RuntimeStatus: Equatable, Sendable {

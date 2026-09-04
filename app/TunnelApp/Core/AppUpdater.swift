@@ -66,7 +66,7 @@ private final class SparkleUpdateDelegate: NSObject, SPUUpdaterDelegate {
         let currentVersion = Bundle.main.object(forInfoDictionaryKey: kCFBundleVersionKey as String) as? String ?? ""
         guard AppUpdateVersion.isNewer(updateItem.versionString, than: currentVersion) else {
             throw NSError(
-                domain: "app.tunnelful.mac.update",
+                domain: "\(AppIdentity.bundleIdentifier).update",
                 code: 1,
                 userInfo: [
                     NSLocalizedDescriptionKey: "更新源提供的版本不高于当前已安装版本，已忽略。"
@@ -74,6 +74,14 @@ private final class SparkleUpdateDelegate: NSObject, SPUUpdaterDelegate {
             )
         }
     }
+}
+
+@MainActor
+private final class ReleaseSmokeTestUpdaterDriver: AppUpdaterDriving {
+    var automaticallyChecksForUpdates = false
+    let canCheckForUpdates = false
+
+    func checkForUpdates() {}
 }
 
 @MainActor
@@ -122,8 +130,15 @@ final class AppUpdater: ObservableObject {
 
     private var storedDriver: (any AppUpdaterDriving)?
 
-    init(driver: (any AppUpdaterDriving)? = nil) {
-        storedDriver = driver
+    init(
+        driver: (any AppUpdaterDriving)? = nil,
+        releaseSmokeTest: Bool = false
+    ) {
+        if releaseSmokeTest {
+            storedDriver = ReleaseSmokeTestUpdaterDriver()
+        } else {
+            storedDriver = driver
+        }
     }
 
     var automaticallyChecksForUpdates: Bool {

@@ -48,8 +48,23 @@ fi
 
 product_config="$project_root/app/Config/Product.xcconfig"
 base_build="$(sed -nE 's/^[[:space:]]*CURRENT_PROJECT_VERSION[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"
+configured_bundle_identifier="$(sed -nE 's/^[[:space:]]*PRODUCT_BUNDLE_IDENTIFIER[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"
+expected_bundle_identifier='app.ihopeful.Tunnelful'
+legacy_identity_build_cutoff='26'
 sparkle_feed_url='https://ihopefulchina.github.io/Tunnelful/appcast.xml'
 sparkle_public_key='0hyxOLR9zBFNvSdozSz0hALE/wHrk72Vsad4KxqpyM0='
+if [[ "$configured_bundle_identifier" != "$expected_bundle_identifier" ]]; then
+  echo "项目 Bundle ID $configured_bundle_identifier 与发布身份 $expected_bundle_identifier 不一致。" >&2
+  exit 1
+fi
+if [[ ! "$base_build" =~ ^[0-9]+$ ]] || (( base_build < 5 )) || (( base_build % 2 == 0 )); then
+  echo "CURRENT_PROJECT_VERSION 必须是大于等于 5 的奇数。" >&2
+  exit 1
+fi
+if (( base_build - 1 < legacy_identity_build_cutoff )); then
+  echo "新 Bundle ID 的最低内部版本必须大于等于旧身份迁移门槛 $legacy_identity_build_cutoff。" >&2
+  exit 1
+fi
 case "$expected_architecture" in
   arm64) expected_build="$base_build" ;;
   x86_64) expected_build="$((base_build - 1))" ;;
@@ -167,7 +182,7 @@ if [[ "$actual_architecture" != "$expected_architecture" ]]; then
 fi
 
 bundle_identifier="$(plutil -extract CFBundleIdentifier raw "$info_plist")"
-if [[ "$bundle_identifier" != 'app.tunnelful.mac' ]]; then
+if [[ "$bundle_identifier" != "$expected_bundle_identifier" ]]; then
   echo "Bundle ID 不符合预期：$bundle_identifier" >&2
   exit 1
 fi
@@ -267,7 +282,10 @@ else
   launch_out="$(mktemp -t tunnelful-verify-out)"
   launch_err="$(mktemp -t tunnelful-verify-err)"
   verify_home="$(mktemp -d -t tunnelful-verify-home)"
-  HOME="$verify_home" "$binary" >"$launch_out" 2>"$launch_err" &
+  HOME="$verify_home" \
+    CFFIXED_USER_HOME="$verify_home" \
+    TUNNELFUL_RELEASE_SMOKE_TEST=1 \
+    "$binary" >"$launch_out" 2>"$launch_err" &
   launch_pid=$!
   sleep 2
   if ! kill -0 "$launch_pid" 2>/dev/null; then
@@ -355,6 +373,8 @@ if [[ -n "$appcast_path" ]]; then
   download_url="$(xmllint --xpath "string($item_xpath/*[local-name()='enclosure']/@url)" "$appcast_path")"
   short_version="$(xmllint --xpath "string($item_xpath/*[local-name()='shortVersionString'])" "$appcast_path")"
   hardware_requirements="$(xmllint --xpath "string($item_xpath/*[local-name()='hardwareRequirements'])" "$appcast_path")"
+  informational_update_count="$(xmllint --xpath "count($item_xpath/*[local-name()='informationalUpdate'])" "$appcast_path")"
+  legacy_below_version="$(xmllint --xpath "string($item_xpath/*[local-name()='informationalUpdate']/*[local-name()='belowVersion'])" "$appcast_path")"
   if [[ "$short_version" != "$expected_bundle_version" ]]; then
     echo "更新源中的短版本与应用版本不一致。" >&2
     exit 1
@@ -369,6 +389,10 @@ if [[ -n "$appcast_path" ]]; then
   fi
   if [[ -z "$signature" ]]; then
     echo '更新源缺少 Sparkle 签名。' >&2
+    exit 1
+  fi
+  if [[ "$informational_update_count" != "1" || "$legacy_below_version" != "$legacy_identity_build_cutoff" ]]; then
+    echo "更新源没有把旧 Bundle ID 的 host build < $legacy_identity_build_cutoff 标为信息型更新。" >&2
     exit 1
   fi
   hardware_requirements_normalized="$(printf '%s' "$hardware_requirements" | tr '[:upper:]' '[:lower:]')"

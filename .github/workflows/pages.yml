@@ -24,9 +24,63 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  release-state:
+    name: 确认公开发布资产
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.release.outputs.ready }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v6
+      - name: 确认当前版本已经发布
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          defer_or_fail() {
+            echo "$1" >&2
+            if [[ "$GITHUB_EVENT_NAME" == 'workflow_run' ]]; then
+              exit 1
+            fi
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          version="$(tr -d '[:space:]' < VERSION)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "VERSION 格式无效：$version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          release_json="$(gh release view "v$version" --json isDraft,assets 2>/dev/null || true)"
+          if [[ -z "$release_json" ]]; then
+            defer_or_fail "v$version 尚未发布，官网保持当前线上版本，等待发布工作流成功后再切版。"
+          fi
+          if [[ "$(jq -r '.isDraft' <<< "$release_json")" != 'false' ]]; then
+            defer_or_fail "v$version 仍是草稿 Release，官网暂不切版。"
+          fi
+          required_assets=(
+            "Tunnelful-$version-arm64.dmg"
+            "Tunnelful-$version-arm64.dmg.sha256"
+            "Tunnelful-$version-x86_64.dmg"
+            "Tunnelful-$version-x86_64.dmg.sha256"
+            'appcast.xml'
+          )
+          for asset in "${required_assets[@]}"; do
+            if ! jq -e --arg asset "$asset" '.assets | any(.name == $asset and .state == "uploaded")' <<< "$release_json" >/dev/null; then
+              defer_or_fail "v$version 缺少已上传的发布资产：$asset；官网暂不切版。"
+            fi
+          done
+          echo 'ready=true' >> "$GITHUB_OUTPUT"
+
   build:
     name: 构建网站
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    needs: release-state
+    if: needs.release-state.outputs.ready == 'true'
     runs-on: ubuntu-latest
     env:
       TUNNELFUL_PRIVATE_SCAN_PATTERN: ${{ secrets.TUNNELFUL_PRIVATE_SCAN_PATTERN }}
@@ -39,28 +93,26 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: website/package-lock.json
-      - name: 使用最新 GitHub Release 的 Sparkle 更新源
+      - name: 使用对应 GitHub Release 的 Sparkle 更新源
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/tunnelful-appcast website/public
-          if gh release download --pattern 'appcast.xml' --dir /tmp/tunnelful-appcast; then
-            cp /tmp/tunnelful-appcast/appcast.xml website/public/appcast.xml
-            echo '已使用最新 GitHub Release 中的 Sparkle 更新源。'
-          elif [[ -f website/public/appcast.xml ]]; then
-            echo '最新 GitHub Release 没有 appcast.xml，沿用仓库中的更新源。'
-          else
-            echo '缺少 Sparkle 更新源。' >&2
-            exit 1
-          fi
+          gh release download "v${{ needs.release-state.outputs.version }}" \
+            --pattern 'appcast.xml' \
+            --dir /tmp/tunnelful-appcast
+          cp /tmp/tunnelful-appcast/appcast.xml website/public/appcast.xml
+          echo '已使用对应 GitHub Release 中的 Sparkle 更新源。'
       - name: 确认更新源包含当前版本
-        if: github.event_name == 'workflow_run'
         run: |
           set -euo pipefail
           version="$(tr -d '[:space:]' < VERSION)"
-          if ! grep -Fq "<sparkle:shortVersionString>$version</sparkle:shortVersionString>" website/public/appcast.xml; then
-            echo "GitHub Pages 使用的更新源未包含 $version。" >&2
+          bundle_version="${version%%-*}"
+          if ! grep -Fq "<sparkle:shortVersionString>$bundle_version</sparkle:shortVersionString>" website/public/appcast.xml \
+            || ! grep -Fq "/releases/download/v$version/Tunnelful-$version-arm64.dmg" website/public/appcast.xml \
+            || ! grep -Fq "/releases/download/v$version/Tunnelful-$version-x86_64.dmg" website/public/appcast.xml; then
+            echo "GitHub Pages 使用的更新源未完整包含 $version。" >&2
             exit 1
           fi
       - name: 检查公开内容
@@ -82,12 +134,12 @@ jobs:
 
   deploy:
     name: 部署网站
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: needs.release-state.outputs.ready == 'true' && needs.build.result == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    needs: build
+    needs: [release-state, build]
     steps:
       - name: 部署到 GitHub Pages
         id: deployment

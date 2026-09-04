@@ -15,6 +15,7 @@ private struct EnvironmentContent: View {
     @ObservedObject var loginController: CloudflaredLoginController
     @State private var showLoginConfirmation = false
     @State private var copiedInstallCommand = false
+    @State private var copyFeedbackGeneration = 0
 
     private var report: EnvironmentReport { model.environmentReport }
 
@@ -25,7 +26,7 @@ private struct EnvironmentContent: View {
                 setupSection
                 checksSection
 
-                Text("账户登录由官方 cloudflared 打开浏览器完成。Tunnelful 不会接收 Cloudflare 密码、Token 或证书内容。")
+                Text("账户登录由官方 cloudflared 打开浏览器完成。Tunnelful 不接收 Cloudflare 密码或 Token；Tunnel credentials 只检查文件元数据，cert.pem 仅在本机读取并校验官方结构，不会展示、记录或上传其内容。")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -59,11 +60,12 @@ private struct EnvironmentContent: View {
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("将直接运行 cloudflared tunnel login。登录在 Cloudflare 官方网页完成，成功后会在本机保存 cert.pem。")
+            Text("将直接运行 cloudflared tunnel login。登录在 Cloudflare 官方网页完成，成功后会在本机保存 cert.pem；若发现无效 cert.pem，会先备份后再登录。")
         }
-        .task(id: copiedInstallCommand) {
+        .task(id: copyFeedbackGeneration) {
             guard copiedInstallCommand else { return }
             try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
             copiedInstallCommand = false
         }
     }
@@ -103,6 +105,7 @@ private struct EnvironmentContent: View {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString("brew install cloudflared", forType: .string)
                             copiedInstallCommand = true
+                            copyFeedbackGeneration &+= 1
                         }
                         .help("复制 brew install cloudflared")
                         .accessibilityValue(copiedInstallCommand ? "已复制到剪贴板" : "")

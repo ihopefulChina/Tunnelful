@@ -176,76 +176,95 @@ struct AppSurfaceModifier: ViewModifier {
 struct AppPageBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .scrollIndicators(.never)
-            .modifier(HideScrollIndicators())
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(AppPalette.workspace)
     }
 }
 
-/// SwiftUI's `.scrollIndicators(.hidden)` still shows macOS legacy scrollers
-/// when a mouse is connected. Walk the AppKit tree and turn them off.
-private struct HideScrollIndicators: ViewModifier {
-    func body(content: Content) -> some View {
-        content.background(alignment: .topLeading) {
-            ScrollIndicatorHider()
-                .frame(width: 0, height: 0)
-                .accessibilityHidden(true)
-                .allowsHitTesting(false)
-        }
-    }
-}
-
-private struct ScrollIndicatorHider: NSViewRepresentable {
-    func makeNSView(context: Context) -> ScrollIndicatorHiderView {
-        ScrollIndicatorHiderView()
-    }
-
-    func updateNSView(_ nsView: ScrollIndicatorHiderView, context: Context) {
-        nsView.hideScrollers()
-    }
-}
-
-final class ScrollIndicatorHiderView: NSView {
-    override var intrinsicContentSize: NSSize { .zero }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        hideScrollers()
-    }
-
-    override func layout() {
-        super.layout()
-        hideScrollers()
-    }
-
-    func hideScrollers() {
-        NativeWindowAppearance.hideScrollers(in: window?.contentView ?? enclosingScrollView ?? self)
-    }
-}
-
+@MainActor
 enum NativeWindowAppearance {
+    private static weak var mainWindow: NSWindow?
+
+    static func registerMainWindow(_ window: NSWindow) {
+        mainWindow = window
+        apply(to: window)
+    }
+
+    static func isMainWindow(_ window: NSWindow) -> Bool {
+        window === mainWindow
+    }
+
     static func apply(to window: NSWindow) {
         // Fill window corners with the sidebar color so the bottom-left
         // radius does not leak the desktop. Do not paint the toolbar white.
         window.backgroundColor = AppPalette.chromeNSColor
         window.isOpaque = true
         window.titlebarSeparatorStyle = .line
-        if let contentView = window.contentView {
-            hideScrollers(in: contentView)
-        }
+    }
+}
+
+private struct MainWindowAppearanceHost: NSViewRepresentable {
+    func makeNSView(context: Context) -> MainWindowRegistrationView {
+        MainWindowRegistrationView()
     }
 
-    static func hideScrollers(in view: NSView) {
-        if let scrollView = view as? NSScrollView {
-            scrollView.hasVerticalScroller = false
-            scrollView.hasHorizontalScroller = false
-            scrollView.autohidesScrollers = true
-            scrollView.scrollerStyle = .overlay
+    func updateNSView(_ nsView: MainWindowRegistrationView, context: Context) {
+        nsView.registerWindowIfNeeded()
+    }
+}
+
+private final class MainWindowRegistrationView: NSView {
+    override var intrinsicContentSize: NSSize { .zero }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        registerWindowIfNeeded()
+    }
+
+    func registerWindowIfNeeded() {
+        guard let window else { return }
+        NativeWindowAppearance.registerMainWindow(window)
+    }
+}
+
+private struct ModelAlertPresenter: ViewModifier {
+    @ObservedObject var model: AppModel
+    @Environment(\.controlActiveState) private var controlActiveState
+    @State private var ownsAlert = false
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear(perform: claimAlertIfPossible)
+            .onChange(of: model.alertMessage) { _, _ in
+                claimAlertIfPossible()
+            }
+            .onChange(of: controlActiveState) { _, _ in
+                claimAlertIfPossible()
+            }
+            .alert("需要处理", isPresented: Binding(
+                get: { ownsAlert && model.alertMessage != nil },
+                set: { isPresented in
+                    guard !isPresented else { return }
+                    ownsAlert = false
+                    model.alertMessage = nil
+                }
+            )) {
+                Button("好", role: .cancel) {
+                    ownsAlert = false
+                    model.alertMessage = nil
+                }
+            } message: {
+                Text(model.alertMessage ?? "")
+            }
+    }
+
+    private func claimAlertIfPossible() {
+        guard !ownsAlert,
+              controlActiveState == .key,
+              model.alertMessage != nil else {
+            return
         }
-        for subview in view.subviews {
-            hideScrollers(in: subview)
-        }
+        ownsAlert = true
     }
 }
 
@@ -281,8 +300,17 @@ extension View {
         modifier(AppPageBackground())
     }
 
-    func hideLegacyScrollers() -> some View {
-        modifier(HideScrollIndicators())
+    func configureMainWindowAppearance() -> some View {
+        background(alignment: .topLeading) {
+            MainWindowAppearanceHost()
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+        }
+    }
+
+    func presentModelAlerts(from model: AppModel) -> some View {
+        modifier(ModelAlertPresenter(model: model))
     }
 
     func appChromeBackground() -> some View {
@@ -480,23 +508,41 @@ struct KeyValueRow: View {
     let value: String
     var style: ValueStyle = .text
 
+    private var displayedValue: String {
+        guard style == .path else { return value }
+        let homePath = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
+        let standardizedValue = URL(fileURLWithPath: value).standardizedFileURL.path
+        guard standardizedValue == homePath || standardizedValue.hasPrefix(homePath + "/") else {
+            return value
+        }
+        return "$HOME" + standardizedValue.dropFirst(homePath.count)
+    }
+
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: AppMetrics.keyValueSpacing) {
             Text(key)
                 .foregroundStyle(.secondary)
                 .frame(width: AppMetrics.keyColumnWidth, alignment: .trailing)
-            Text(value)
+            Text(displayedValue)
                 .font(style == .path ? .body.monospaced() : .body)
                 .textSelection(.enabled)
                 .lineLimit(2)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .help(value)
+                .contextMenu {
+                    if style == .path {
+                        Button("复制完整路径") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(value, forType: .string)
+                        }
+                    }
+                }
         }
         .font(.body)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(key)，\(value)")
-        .accessibilityHint(style == .path ? "完整路径可复制" : "")
+        .accessibilityLabel("\(key)，\(displayedValue)")
+        .accessibilityHint(style == .path ? "可通过操作菜单复制完整路径" : "")
     }
 }
 

@@ -27,8 +27,8 @@ struct OriginHealthChecker: Sendable {
         let session = URLSession(configuration: configuration)
 
         do {
-            let (_, response) = try await session.data(for: request)
-            session.finishTasksAndInvalidate()
+            let (_, response) = try await session.bytes(for: request)
+            session.invalidateAndCancel()
             let code = (response as? HTTPURLResponse)?.statusCode
             let latency = Date().timeIntervalSince(startedAt)
             if let code, (500...599).contains(code) {
@@ -42,7 +42,7 @@ struct OriginHealthChecker: Sendable {
                 latency: latency
             )
         } catch {
-            session.finishTasksAndInvalidate()
+            session.invalidateAndCancel()
             return OriginHealthResult(
                 state: .unreachable(SensitiveLogRedactor().redact(error.localizedDescription)),
                 latency: Date().timeIntervalSince(startedAt)

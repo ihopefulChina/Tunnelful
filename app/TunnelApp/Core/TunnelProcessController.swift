@@ -218,6 +218,7 @@ struct EdgeLogInterpreter: Equatable, Sendable {
 @MainActor
 final class TunnelProcessController: ObservableObject {
     @Published private(set) var processState: ManagedProcessState = .stopped
+    @Published private(set) var managedTunnelName: String?
     @Published private(set) var edgeState: EdgeConnectionState = .unknown
     @Published private(set) var edgeDiagnostic: String?
     @Published private(set) var suggestsHTTP2Protocol = false
@@ -228,6 +229,7 @@ final class TunnelProcessController: ObservableObject {
     private struct LaunchRequest {
         let executableURL: URL
         let arguments: [String]
+        let tunnelName: String?
     }
 
     private let redactor: any LogRedacting
@@ -236,6 +238,7 @@ final class TunnelProcessController: ObservableObject {
     private var pendingRestart: LaunchRequest?
     private var shutdownCompletion: (() -> Void)?
     private var expectedTerminationPID: Int32?
+    private var isShuttingDown = false
 
     init(
         redactor: any LogRedacting = SensitiveLogRedactor(),
@@ -245,7 +248,12 @@ final class TunnelProcessController: ObservableObject {
         self.terminationGracePeriod = terminationGracePeriod
     }
 
-    func start(executableURL: URL, arguments: [String]) throws {
+    func start(
+        executableURL: URL,
+        arguments: [String],
+        tunnelName: String? = nil
+    ) throws {
+        guard !isShuttingDown else { throw CloudflaredError.commandCancelled }
         guard process == nil else { throw CloudflaredError.processAlreadyRunning }
         guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
             throw CloudflaredError.invalidExecutable(executableURL)
@@ -259,11 +267,11 @@ final class TunnelProcessController: ObservableObject {
         logDrainGroup.enter()
         let outputReader = ProcessPipeReader(
             fileHandle: standardOutput.fileHandleForReading,
-            label: "app.tunnelful.mac.logs.stdout"
+            label: "\(AppIdentity.bundleIdentifier).logs.stdout"
         )
         let errorReader = ProcessPipeReader(
             fileHandle: standardError.fileHandleForReading,
-            label: "app.tunnelful.mac.logs.stderr"
+            label: "\(AppIdentity.bundleIdentifier).logs.stderr"
         )
         newProcess.executableURL = executableURL
         newProcess.arguments = arguments
@@ -272,6 +280,7 @@ final class TunnelProcessController: ObservableObject {
         newProcess.standardOutput = standardOutput
         newProcess.standardError = standardError
 
+        managedTunnelName = tunnelName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         processState = .starting
         resetEdgeObservation(to: .connecting)
         edgeInterpreter.noteForcedHTTP2(Self.argumentsForceHTTP2(arguments))
@@ -320,6 +329,7 @@ final class TunnelProcessController: ObservableObject {
             try? standardError.fileHandleForReading.close()
             try? standardError.fileHandleForWriting.close()
             processState = .failed(exitCode: -1)
+            managedTunnelName = nil
             resetEdgeObservation(to: .unknown)
             throw CloudflaredError.processCouldNotStart(error.localizedDescription)
         }
@@ -332,12 +342,21 @@ final class TunnelProcessController: ObservableObject {
         requestTermination(of: process)
     }
 
-    func restart(executableURL: URL, arguments: [String]) throws {
+    func restart(
+        executableURL: URL,
+        arguments: [String],
+        tunnelName: String? = nil
+    ) throws {
+        guard !isShuttingDown else { throw CloudflaredError.commandCancelled }
         guard let process else {
-            try start(executableURL: executableURL, arguments: arguments)
+            try start(executableURL: executableURL, arguments: arguments, tunnelName: tunnelName)
             return
         }
-        pendingRestart = LaunchRequest(executableURL: executableURL, arguments: arguments)
+        pendingRestart = LaunchRequest(
+            executableURL: executableURL,
+            arguments: arguments,
+            tunnelName: tunnelName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        )
         appendAppLog("已请求重启，正在等待当前进程停止。")
         requestTermination(of: process)
     }
@@ -347,6 +366,7 @@ final class TunnelProcessController: ObservableObject {
     }
 
     func shutdown(completion: @escaping () -> Void) {
+        isShuttingDown = true
         pendingRestart = nil
         guard let process else {
             completion()
@@ -401,6 +421,7 @@ final class TunnelProcessController: ObservableObject {
         }
         terminatedProcess.terminationHandler = nil
         process = nil
+        managedTunnelName = nil
         resetEdgeObservation(to: .unknown)
         if terminationStatus == 0 || wasExpectedTermination {
             processState = .stopped
@@ -472,11 +493,21 @@ final class TunnelProcessController: ObservableObject {
         guard let request = pendingRestart else { return }
         pendingRestart = nil
         do {
-            try start(executableURL: request.executableURL, arguments: request.arguments)
+            try start(
+                executableURL: request.executableURL,
+                arguments: request.arguments,
+                tunnelName: request.tunnelName
+            )
         } catch {
             processState = .failed(exitCode: -1)
             appendAppLog(redactor.redact(error.localizedDescription))
         }
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }
 

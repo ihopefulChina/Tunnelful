@@ -3,27 +3,27 @@
     <channel>
         <title>Tunnelful</title>
         <item>
-            <title>0.1.5</title>
-            <pubDate>Fri, 04 Sep 2026 07:14:44 +0800</pubDate>
-            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.5</link>
-            <sparkle:version>11</sparkle:version>
-            <sparkle:shortVersionString>0.1.5</sparkle:shortVersionString>
+            <title>0.1.9</title>
+            <pubDate>Fri, 04 Sep 2026 07:26:16 +0000</pubDate>
+            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.9</link>
+            <sparkle:version>25</sparkle:version>
+            <sparkle:shortVersionString>0.1.9</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.5
+            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.9
 
-Tunnelful `0.1.5` 继续支持 Apple 芯片与 Intel Mac，最低系统版本为 macOS 14。
+Tunnelful `0.1.9` 继续支持 Apple 芯片与 Intel Mac，最低系统版本为 macOS 14。
 
 ## 本次变化
 
-- 修复“检查更新…”仍提示 0.1.2。0.1.3 与 0.1.4 的发布流程没有生成 Sparkle 更新源，GitHub Pages 一直提供过期的 0.1.2 条目。
-- 正式发布现在必须生成、校验并上传 `appcast.xml`；官网会改用最新 GitHub Release 中的更新源。
-- 应用内更新会忽略不高于当前已安装版本的条目，避免把过期的 0.1.2 当成可安装更新。
+- 侧栏改回扁平列表，不再使用状态/配置/诊断分组；标题栏、侧栏底角与卡片底色与官网产品截图一致。
+- 外接鼠标时也会隐藏系统传统滚动条，页面仍可滚动，不再露出右侧轨道。
+- 更新官网、README 与设计校验中的浅色/深色主窗口截图；官网产品图去掉描边。
 
-## 下载 Tunnelful 0.1.5
+## 下载 Tunnelful 0.1.9
 
-- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/latest/download/Tunnelful-0.1.5-arm64.dmg)
-- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/latest/download/Tunnelful-0.1.5-x86_64.dmg)
+- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/latest/download/Tunnelful-0.1.9-arm64.dmg)
+- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/latest/download/Tunnelful-0.1.9-x86_64.dmg)
 
 两个安装包都需要 macOS 14 或更高版本。不确定芯片类型时，可在苹果菜单的「关于本机」中查看“芯片”或“处理器”。
 
@@ -38,8 +38,8 @@ Tunnelful `0.1.5` 继续支持 Apple 芯片与 Intel Mac，最低系统版本为
 校验下载文件：
 
 ```bash
-shasum -a 256 -c Tunnelful-0.1.5-arm64.dmg.sha256
-shasum -a 256 -c Tunnelful-0.1.5-x86_64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.9-arm64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.9-x86_64.dmg.sha256
 ```
 
 ## 分发方式与首次打开
@@ -56,35 +56,35 @@ shasum -a 256 -c Tunnelful-0.1.5-x86_64.dmg.sha256
 
 - 当前主要面向本地管理的命名 Tunnel。
 - DNS 路由不会自动执行或批量执行；命令显式传入 `--overwrite-dns=false`，每次远端变更都需要用户确认。
-- 0.1.2 无法启动，不能通过应用内更新升级；请重新下载 0.1.5。
-- 0.1.3 与 0.1.4 的应用内更新源仍指向过期的 0.1.2，请重新下载 0.1.5，不要安装提示中的 0.1.2。
+- 0.1.2 无法启动，不能通过应用内更新升级；请重新下载 0.1.9。
+- 0.1.3 与 0.1.4 的应用内更新源仍指向过期的 0.1.2，请重新下载 0.1.9，不要安装提示中的 0.1.2。
 - 暂不提供 Quick Tunnel、远程配置管理、Access、私网路由或多主机副本。
 - 日志脱敏属于防误操作保护；分享前仍需人工检查。
 - 构建与签名验证通过不等于真实 Cloudflare 账号联调或生产可用性验证通过。
 ]]></description>
-            <enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.5/Tunnelful-0.1.5-arm64.dmg" length="1364277" type="application/octet-stream" sparkle:edSignature="Luqu1CumKrV2UiDZqgYgtgQ28RulyTGF1EGpaSbnplU1mTD8iqQAalHiu3PRk5Q4JCyAQMc3tUCdFiJDqVulCA=="/>
+            <enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.9/Tunnelful-0.1.9-arm64.dmg" length="1407791" type="application/octet-stream" sparkle:edSignature="vDq+142TjfdADBnLvv8FgJYCXLAwX/89JNjVhBOD76FsKzx1mnlp3MBmajjlhLYZk7B5zbL81OxAsw83rnxtBA=="/>
         </item>
         <item>
-            <title>0.1.5</title>
-            <pubDate>Fri, 04 Sep 2026 07:14:44 +0800</pubDate>
-            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.5</link>
-            <sparkle:version>10</sparkle:version>
-            <sparkle:shortVersionString>0.1.5</sparkle:shortVersionString>
+            <title>0.1.9</title>
+            <pubDate>Fri, 04 Sep 2026 07:26:48 +0000</pubDate>
+            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.9</link>
+            <sparkle:version>24</sparkle:version>
+            <sparkle:shortVersionString>0.1.9</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.5
+            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.9
 
-Tunnelful `0.1.5` 继续支持 Apple 芯片与 Intel Mac，最低系统版本为 macOS 14。
+Tunnelful `0.1.9` 继续支持 Apple 芯片与 Intel Mac，最低系统版本为 macOS 14。
 
 ## 本次变化
 
-- 修复“检查更新…”仍提示 0.1.2。0.1.3 与 0.1.4 的发布流程没有生成 Sparkle 更新源，GitHub Pages 一直提供过期的 0.1.2 条目。
-- 正式发布现在必须生成、校验并上传 `appcast.xml`；官网会改用最新 GitHub Release 中的更新源。
-- 应用内更新会忽略不高于当前已安装版本的条目，避免把过期的 0.1.2 当成可安装更新。
+- 侧栏改回扁平列表，不再使用状态/配置/诊断分组；标题栏、侧栏底角与卡片底色与官网产品截图一致。
+- 外接鼠标时也会隐藏系统传统滚动条，页面仍可滚动，不再露出右侧轨道。
+- 更新官网、README 与设计校验中的浅色/深色主窗口截图；官网产品图去掉描边。
 
-## 下载 Tunnelful 0.1.5
+## 下载 Tunnelful 0.1.9
 
-- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/latest/download/Tunnelful-0.1.5-arm64.dmg)
-- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/latest/download/Tunnelful-0.1.5-x86_64.dmg)
+- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/latest/download/Tunnelful-0.1.9-arm64.dmg)
+- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/latest/download/Tunnelful-0.1.9-x86_64.dmg)
 
 两个安装包都需要 macOS 14 或更高版本。不确定芯片类型时，可在苹果菜单的「关于本机」中查看“芯片”或“处理器”。
 
@@ -99,8 +99,8 @@ Tunnelful `0.1.5` 继续支持 Apple 芯片与 Intel Mac，最低系统版本为
 校验下载文件：
 
 ```bash
-shasum -a 256 -c Tunnelful-0.1.5-arm64.dmg.sha256
-shasum -a 256 -c Tunnelful-0.1.5-x86_64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.9-arm64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.9-x86_64.dmg.sha256
 ```
 
 ## 分发方式与首次打开
@@ -117,13 +117,13 @@ shasum -a 256 -c Tunnelful-0.1.5-x86_64.dmg.sha256
 
 - 当前主要面向本地管理的命名 Tunnel。
 - DNS 路由不会自动执行或批量执行；命令显式传入 `--overwrite-dns=false`，每次远端变更都需要用户确认。
-- 0.1.2 无法启动，不能通过应用内更新升级；请重新下载 0.1.5。
-- 0.1.3 与 0.1.4 的应用内更新源仍指向过期的 0.1.2，请重新下载 0.1.5，不要安装提示中的 0.1.2。
+- 0.1.2 无法启动，不能通过应用内更新升级；请重新下载 0.1.9。
+- 0.1.3 与 0.1.4 的应用内更新源仍指向过期的 0.1.2，请重新下载 0.1.9，不要安装提示中的 0.1.2。
 - 暂不提供 Quick Tunnel、远程配置管理、Access、私网路由或多主机副本。
 - 日志脱敏属于防误操作保护；分享前仍需人工检查。
 - 构建与签名验证通过不等于真实 Cloudflare 账号联调或生产可用性验证通过。
 ]]></description>
-            <enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.5/Tunnelful-0.1.5-x86_64.dmg" length="1489641" type="application/octet-stream" sparkle:edSignature="kzyaks3z8H0zW+vTGawTxQjaQOQlJppgigNGpOijd9XyrUbp05moAXio6CT2SOEyz5of3vn+BLeaxbfH3NSgBQ=="/>
+            <enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.9/Tunnelful-0.1.9-x86_64.dmg" length="1521278" type="application/octet-stream" sparkle:edSignature="WXm4i2v9Y+YSzx34ZuxVqC6/AVh3Ttyy607onaGdohqr2GxNsydmTqWlSxO4DxmsVruS9DOpBZWxmkKVBuANBA=="/>
         </item>
     </channel>
 </rss>

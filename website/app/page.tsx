@@ -4,7 +4,7 @@ import DownloadChooser from './DownloadChooser';
 import ThemeToggle from './ThemeToggle';
 
 const repositoryURL = 'https://github.com/ihopefulChina/Tunnelful';
-const releasesURL = `${repositoryURL}/releases/tag/v0.1.9`;
+const releasesURL = `${repositoryURL}/releases/tag/v0.1.10`;
 
 const basePath = process.env.TUNNELFUL_PAGES === '1' ? '/Tunnelful' : '';
 
@@ -32,6 +32,18 @@ const features = [
       '检查 cloudflared、Homebrew、本地配置与账户状态，并引导完成官方登录。',
   },
   {
+    label: '配置',
+    title: '先校验，再安全保存。',
+    description:
+      '保留未知字段、注释和高级规则；通过本地与官方 CLI 校验后备份并原子写入，外部改动不会被静默覆盖。',
+  },
+  {
+    label: '发布',
+    title: '本地配置与远端 DNS，边界分明。',
+    description:
+      '源站检查只对应当前地址，Tunnel 与专属凭据必须匹配；DNS 命令先预览再确认，并明确禁止覆盖同名记录。',
+  },
+  {
     label: '状态',
     title: '进程、Edge 与源站各自可见。',
     description:
@@ -45,9 +57,9 @@ const features = [
   },
   {
     label: '更新',
-    title: '新版本，在应用内安装。',
+    title: '后续更新，在应用内确认。',
     description:
-      '用 Sparkle 检查官方更新源。发现新版本后由你确认，安装完成后会重新打开 Tunnelful。',
+      '0.1.10 起使用新的正式 Bundle ID，可继续检查后续兼容更新；旧版检查更新只显示迁移说明并引导前往 Release 页面。',
   },
 ];
 
@@ -75,7 +87,7 @@ export default function Home() {
           <span>交给一个真正的 Mac 应用。</span>
         </h1>
         <p className="hero-description">
-          编辑 Ingress、确认并执行 DNS 路由命令，以及启动或停止 Tunnel。
+          检查环境，安全编辑 Ingress，预览并确认 DNS 路由，分别查看进程、Edge 与源站状态。
           窗口关闭后仍常驻菜单栏。
         </p>
         <DownloadChooser />
@@ -86,24 +98,24 @@ export default function Home() {
         <figure className="product-figure">
           <Image
             className="product-image product-image-light"
-            src={`${basePath}/tunnelful-window-v0.1.9.png`}
+            src={`${basePath}/tunnelful-window-v0.1.10.png`}
             width={2240}
             height={1560}
-            alt="Tunnelful 浅色主窗口：左侧为功能导航，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
+            alt="Tunnelful 0.1.10 浅色主窗口：左侧按状态、配置与诊断分组，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
             priority
             unoptimized
           />
           <Image
             className="product-image product-image-dark"
-            src={`${basePath}/tunnelful-window-dark-v0.1.9.png`}
+            src={`${basePath}/tunnelful-window-dark-v0.1.10.png`}
             width={2240}
             height={1560}
-            alt="Tunnelful 深色主窗口：左侧为功能导航，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
+            alt="Tunnelful 0.1.10 深色主窗口：左侧按状态、配置与诊断分组，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
             priority
             unoptimized
           />
           <figcaption>
-            一个原生窗口，集中查看状态、Tunnel、发布、Ingress 配置、环境与日志。
+            原生侧栏按状态、配置与诊断分组，集中查看 Tunnel、发布、Ingress、环境与日志。
           </figcaption>
         </figure>
       </section>
@@ -138,6 +150,10 @@ export default function Home() {
             日志会尽力遮罩令牌与用户目录。
           </p>
           <p>
+            Tunnel credentials 只检查文件元数据；cert.pem 仅在本机校验结构。
+            只有在你单独确认后，应用才会调用官方 CLI 修改远端 DNS。
+          </p>
+          <p>
             项目采用 Apache-2.0 许可。每条命令、每次配置写入与当前限制都能在源码中检查。
           </p>
           <a className="text-link" href={`${repositoryURL}/blob/main/SECURITY.md`}>
@@ -157,7 +173,7 @@ export default function Home() {
         />
         <h2 id="download-title">让 Tunnel 回到 Mac 的使用方式。</h2>
         <p>免费、开源。分别为 Apple 芯片与 Intel Mac 提供原生安装包。</p>
-        <a className="button button-primary" href="#downloads">选择 Tunnelful 0.1.9</a>
+        <a className="button button-primary" href="#downloads">选择 Tunnelful 0.1.10</a>
         <a className="release-link" href={releasesURL}>查看发布说明</a>
       </section>
 

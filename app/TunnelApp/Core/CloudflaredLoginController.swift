@@ -25,7 +25,7 @@ final class CloudflaredLoginController: ObservableObject {
         self.inspector = inspector
     }
 
-    func start(executableURL: URL, completion: @escaping @MainActor () -> Void) {
+    func start(executableURL: URL, completion: @escaping @MainActor @Sendable () -> Void) {
         guard process == nil else { return }
         guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
             state = .failed("所选 cloudflared 不可执行。")
@@ -33,6 +33,12 @@ final class CloudflaredLoginController: ObservableObject {
         }
         guard !inspector.hasUsableCertificate() else {
             state = .failed("已发现 cert.pem。为避免覆盖账户凭据，请先使用“验证账户”。")
+            return
+        }
+        do {
+            _ = try inspector.backupInvalidUserCertificateIfNeeded()
+        } catch {
+            state = .failed("无法备份无效的 cert.pem：\(error.localizedDescription)")
             return
         }
 
@@ -46,7 +52,8 @@ final class CloudflaredLoginController: ObservableObject {
         process.standardError = FileHandle.nullDevice
 
         process.terminationHandler = { [weak self] finishedProcess in
-            DispatchQueue.main.async {
+            let terminationStatus = finishedProcess.terminationStatus
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 let wasCancelled = self.cancellationRequested
                 self.process = nil
@@ -54,14 +61,14 @@ final class CloudflaredLoginController: ObservableObject {
 
                 if wasCancelled {
                     self.state = .cancelled
-                } else if finishedProcess.terminationStatus == 0, self.inspector.hasUsableCertificate() {
+                } else if terminationStatus == 0, self.inspector.hasUsableCertificate() {
                     self.state = .succeeded
                     completion()
-                } else if finishedProcess.terminationStatus == 0 {
+                } else if terminationStatus == 0 {
                     self.state = .failed("浏览器登录尚未完成，未发现有效的 cert.pem。")
                 } else {
                     self.state = .failed(
-                        "官方登录未完成（退出状态 \(finishedProcess.terminationStatus)）。" +
+                        "官方登录未完成（退出状态 \(terminationStatus)）。" +
                         "请检查浏览器与网络后重试。"
                     )
                 }

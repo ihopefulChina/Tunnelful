@@ -3,9 +3,119 @@ import XCTest
 @testable import TunnelApp
 
 final class CommandAndParserTests: XCTestCase {
+    func testAppIdentityUsesRequestedBundleIdentifier() {
+        XCTAssertEqual(AppIdentity.bundleIdentifier, "app.ihopeful.Tunnelful")
+        XCTAssertEqual(AppIdentity.launchAgentLabel, "app.ihopeful.Tunnelful.login")
+        XCTAssertEqual(AppIdentity.legacyBundleIdentifier, "app.tunnelful.mac")
+    }
+
+    func testBundleIdentifierMigrationCopiesOnlyMissingValuesAndKeepsLegacyDomain() throws {
+        let suffix = UUID().uuidString
+        let legacyDomain = "app.ihopeful.Tunnelful.migration-legacy.\(suffix)"
+        let currentDomain = "app.ihopeful.Tunnelful.migration-current.\(suffix)"
+        let defaults = UserDefaults.standard
+        defer {
+            defaults.removePersistentDomain(forName: legacyDomain)
+            defaults.removePersistentDomain(forName: currentDomain)
+        }
+
+        let checkDate = Date(timeIntervalSince1970: 1_700_000_000)
+        defaults.setPersistentDomain(
+            [
+                "appearance": "dark",
+                "startTunnelOnLaunch": true,
+                "SULastCheckTime": checkDate
+            ],
+            forName: legacyDomain
+        )
+        defaults.setPersistentDomain(
+            [
+                "appearance": "light",
+                "newDomainOnly": "preserve"
+            ],
+            forName: currentDomain
+        )
+
+        XCTAssertTrue(
+            AppDomainMigration.migrateLegacyDefaultsIfNeeded(
+                userDefaults: defaults,
+                legacyDomain: legacyDomain,
+                currentDomain: currentDomain,
+                environment: [:]
+            )
+        )
+
+        let migrated = try XCTUnwrap(defaults.persistentDomain(forName: currentDomain))
+        XCTAssertEqual(migrated["appearance"] as? String, "light")
+        XCTAssertEqual(migrated["startTunnelOnLaunch"] as? Bool, true)
+        XCTAssertEqual(migrated["SULastCheckTime"] as? Date, checkDate)
+        XCTAssertEqual(migrated["newDomainOnly"] as? String, "preserve")
+        XCTAssertEqual(
+            defaults.persistentDomain(forName: legacyDomain)?["appearance"] as? String,
+            "dark"
+        )
+
+        var legacyValues = try XCTUnwrap(defaults.persistentDomain(forName: legacyDomain))
+        legacyValues["lateLegacyValue"] = "must-not-copy"
+        defaults.setPersistentDomain(legacyValues, forName: legacyDomain)
+        XCTAssertFalse(
+            AppDomainMigration.migrateLegacyDefaultsIfNeeded(
+                userDefaults: defaults,
+                legacyDomain: legacyDomain,
+                currentDomain: currentDomain,
+                environment: [:]
+            )
+        )
+        XCTAssertNil(
+            defaults.persistentDomain(forName: currentDomain)?["lateLegacyValue"]
+        )
+    }
+
+    @MainActor
+    func testReleaseSmokeTestSkipsMigrationAndUsesEmptyIsolatedDefaults() throws {
+        let suffix = UUID().uuidString
+        let legacyDomain = "app.ihopeful.Tunnelful.smoke-legacy.\(suffix)"
+        let currentDomain = "app.ihopeful.Tunnelful.smoke-current.\(suffix)"
+        let smokeSuite = "app.ihopeful.Tunnelful.smoke-suite.\(suffix)"
+        let defaults = UserDefaults.standard
+        let environment = [AppIdentity.releaseSmokeTestEnvironmentKey: "1"]
+        defer {
+            defaults.removePersistentDomain(forName: legacyDomain)
+            defaults.removePersistentDomain(forName: currentDomain)
+            defaults.removePersistentDomain(forName: smokeSuite)
+        }
+
+        defaults.setPersistentDomain(
+            ["startTunnelOnLaunch": true],
+            forName: legacyDomain
+        )
+        XCTAssertFalse(
+            AppDomainMigration.migrateLegacyDefaultsIfNeeded(
+                userDefaults: defaults,
+                legacyDomain: legacyDomain,
+                currentDomain: currentDomain,
+                environment: environment
+            )
+        )
+        XCTAssertNil(defaults.persistentDomain(forName: currentDomain))
+
+        let staleSmokeDefaults = try XCTUnwrap(UserDefaults(suiteName: smokeSuite))
+        staleSmokeDefaults.set(true, forKey: "startTunnelOnLaunch")
+        let isolatedDefaults = AppDomainMigration.applicationUserDefaults(
+            environment: environment,
+            smokeTestSuiteName: smokeSuite
+        )
+        let model = AppModel(
+            processController: TunnelProcessController(),
+            userDefaults: isolatedDefaults
+        )
+        XCTAssertFalse(model.startTunnelOnLaunch)
+        XCTAssertNotEqual(smokeSuite, AppIdentity.bundleIdentifier)
+    }
+
     @MainActor
     func testAppearanceDefaultsToSystemAndPersistsSelection() {
-        let suiteName = "app.tunnelful.mac.tests.\(UUID().uuidString)"
+        let suiteName = "app.ihopeful.Tunnelful.tests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             return XCTFail("无法创建隔离的 UserDefaults。")
         }
@@ -59,9 +169,36 @@ final class CommandAndParserTests: XCTestCase {
         )
     }
 
+    func testMenuBarAccessibilityStatusIncludesManagedTunnel() {
+        XCTAssertEqual(
+            MenuBarStatusPresentation.text(
+                process: .stopped,
+                edge: .unknown,
+                tunnelName: nil
+            ),
+            "Tunnel 已停止"
+        )
+        XCTAssertEqual(
+            MenuBarStatusPresentation.text(
+                process: .running(pid: 1),
+                edge: .connected,
+                tunnelName: "production"
+            ),
+            "production：已连接 Cloudflare Edge"
+        )
+        XCTAssertEqual(
+            MenuBarStatusPresentation.text(
+                process: .running(pid: 1),
+                edge: .unreachable,
+                tunnelName: "production"
+            ),
+            "production：无法连接 Cloudflare Edge"
+        )
+    }
+
     @MainActor
     func testTransportProtocolDefaultsToAutoAndPersistsSelection() {
-        let suiteName = "app.tunnelful.mac.tests.\(UUID().uuidString)"
+        let suiteName = "app.ihopeful.Tunnelful.tests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             return XCTFail("无法创建隔离的 UserDefaults。")
         }
@@ -282,7 +419,7 @@ final class CommandAndParserTests: XCTestCase {
 
         let certificate = cloudflaredDirectory.appendingPathComponent("cert.pem")
         let credentials = cloudflaredDirectory.appendingPathComponent("tunnel.json")
-        try Data("certificate-super-secret".utf8).write(to: certificate)
+        try makeOriginCertificate(apiToken: "certificate-super-secret").write(to: certificate)
         try Data("credential-super-secret".utf8).write(to: credentials)
         try FileManager.default.setAttributes([.posixPermissions: NSNumber(value: 0o600)], ofItemAtPath: certificate.path)
         try FileManager.default.setAttributes([.posixPermissions: NSNumber(value: 0o600)], ofItemAtPath: credentials.path)
@@ -317,9 +454,41 @@ final class CommandAndParserTests: XCTestCase {
         XCTAssertFalse(allDetails.contains(root.path))
     }
 
+    func testEnvironmentInspectorValidatesCertificateAndFollowsSymlinkTarget() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tunnelful-certificate-\(UUID().uuidString)", isDirectory: true)
+        let cloudflaredDirectory = root.appendingPathComponent(".cloudflared", isDirectory: true)
+        let target = root.appendingPathComponent("origin-cert.pem")
+        let certificate = cloudflaredDirectory.appendingPathComponent("cert.pem")
+        try FileManager.default.createDirectory(at: cloudflaredDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try makeOriginCertificate().write(to: target)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o400)],
+            ofItemAtPath: target.path
+        )
+        try FileManager.default.createSymbolicLink(at: certificate, withDestinationURL: target)
+
+        let inspector = EnvironmentInspector(homeDirectory: root)
+        XCTAssertTrue(inspector.hasUsableCertificate())
+        XCTAssertNil(try inspector.backupInvalidUserCertificateIfNeeded())
+        XCTAssertEqual(
+            try FileManager.default.destinationOfSymbolicLink(atPath: certificate.path),
+            target.path
+        )
+
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: target.path
+        )
+        try Data("not a Cloudflare origin certificate".utf8).write(to: target)
+        XCTAssertFalse(inspector.hasUsableCertificate())
+    }
+
     @MainActor
     func testTunnelControlsRejectOptionLikeTunnelNames() throws {
-        let suiteName = "app.tunnelful.mac.tunnel-name-tests.\(UUID().uuidString)"
+        let suiteName = "app.ihopeful.Tunnelful.tunnel-name-tests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let processController = TunnelProcessController()
@@ -364,10 +533,12 @@ final class CommandAndParserTests: XCTestCase {
         )
         controller.start(executableURL: executable) {}
 
-        for _ in 0..<100 where controller.isRunning {
+        for _ in 0..<500 {
+            guard controller.isRunning else { break }
             try await Task.sleep(for: .milliseconds(10))
         }
 
+        XCTAssertFalse(controller.isRunning, "Login process did not finish within five seconds")
         guard case let .failed(message) = controller.state else {
             return XCTFail("Expected a compact login failure")
         }
@@ -377,6 +548,125 @@ final class CommandAndParserTests: XCTestCase {
         XCTAssertTrue(message.contains("7"))
     }
 
+    @MainActor
+    func testLoginBacksUpInvalidCertificateBeforeRetrying() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tunnelful-login-recovery-\(UUID().uuidString)", isDirectory: true)
+        let cloudflaredDirectory = root.appendingPathComponent(".cloudflared", isDirectory: true)
+        try FileManager.default.createDirectory(at: cloudflaredDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let certificate = cloudflaredDirectory.appendingPathComponent("cert.pem")
+        let invalidCertificate = Data("stale-invalid-certificate".utf8)
+        try invalidCertificate.write(to: certificate)
+
+        let executable = root.appendingPathComponent("cloudflared")
+        let validCertificate = try makeOriginCertificate().base64EncodedString()
+        let script = "#!/bin/sh\nprintf '%s' '\(validCertificate)' | /usr/bin/base64 -D > '\(certificate.path)'\nexit 0\n"
+        try Data(script.utf8).write(to: executable, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o700)],
+            ofItemAtPath: executable.path
+        )
+
+        let controller = CloudflaredLoginController(
+            inspector: EnvironmentInspector(homeDirectory: root)
+        )
+        let completion = LoginCompletionRecorder()
+        controller.start(executableURL: executable) {
+            completion.callCount += 1
+        }
+
+        for _ in 0..<100 where controller.isRunning {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(controller.state, .succeeded)
+        XCTAssertEqual(completion.callCount, 1)
+        XCTAssertTrue(EnvironmentInspector(homeDirectory: root).hasUsableCertificate())
+
+        let backups = try FileManager.default.contentsOfDirectory(
+            at: cloudflaredDirectory,
+            includingPropertiesForKeys: nil
+        ).filter { $0.lastPathComponent.hasPrefix("cert.pem.invalid.") }
+        XCTAssertEqual(backups.count, 1)
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(backups.first)), invalidCertificate)
+    }
+
+    @MainActor
+    func testLoginDoesNotMoveValidCertificate() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tunnelful-login-valid-certificate-\(UUID().uuidString)", isDirectory: true)
+        let cloudflaredDirectory = root.appendingPathComponent(".cloudflared", isDirectory: true)
+        try FileManager.default.createDirectory(at: cloudflaredDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let certificate = cloudflaredDirectory.appendingPathComponent("cert.pem")
+        let original = try makeOriginCertificate()
+        try original.write(to: certificate)
+
+        let controller = CloudflaredLoginController(
+            inspector: EnvironmentInspector(homeDirectory: root)
+        )
+        controller.start(executableURL: URL(fileURLWithPath: "/usr/bin/true")) {}
+
+        XCTAssertEqual(
+            controller.state,
+            .failed("已发现 cert.pem。为避免覆盖账户凭据，请先使用“验证账户”。")
+        )
+        XCTAssertEqual(try Data(contentsOf: certificate), original)
+        let backups = try FileManager.default.contentsOfDirectory(
+            at: cloudflaredDirectory,
+            includingPropertiesForKeys: nil
+        ).filter { $0.lastPathComponent.hasPrefix("cert.pem.invalid.") }
+        XCTAssertTrue(backups.isEmpty)
+    }
+
+    @MainActor
+    func testLoginBacksUpBrokenCertificateSymlinkBeforeRetrying() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tunnelful-login-broken-link-\(UUID().uuidString)", isDirectory: true)
+        let cloudflaredDirectory = root.appendingPathComponent(".cloudflared", isDirectory: true)
+        try FileManager.default.createDirectory(at: cloudflaredDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let certificate = cloudflaredDirectory.appendingPathComponent("cert.pem")
+        let missingTarget = root.appendingPathComponent("missing-origin-cert.pem")
+        try FileManager.default.createSymbolicLink(at: certificate, withDestinationURL: missingTarget)
+
+        let executable = root.appendingPathComponent("cloudflared")
+        let validCertificate = try makeOriginCertificate().base64EncodedString()
+        let script = "#!/bin/sh\nprintf '%s' '\(validCertificate)' | /usr/bin/base64 -D > '\(certificate.path)'\nexit 0\n"
+        try Data(script.utf8).write(to: executable, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o700)],
+            ofItemAtPath: executable.path
+        )
+
+        let controller = CloudflaredLoginController(
+            inspector: EnvironmentInspector(homeDirectory: root)
+        )
+        controller.start(executableURL: executable) {}
+
+        for _ in 0..<100 where controller.isRunning {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(controller.state, .succeeded)
+        XCTAssertTrue(EnvironmentInspector(homeDirectory: root).hasUsableCertificate())
+
+        let backups = try FileManager.default.contentsOfDirectory(
+            at: cloudflaredDirectory,
+            includingPropertiesForKeys: nil
+        ).filter { $0.lastPathComponent.hasPrefix("cert.pem.invalid.") }
+        let backup = try XCTUnwrap(backups.first)
+        XCTAssertEqual(backups.count, 1)
+        XCTAssertEqual(
+            try FileManager.default.destinationOfSymbolicLink(atPath: backup.path),
+            missingTarget.path
+        )
+    }
+
     func testTunnelListParserAcceptsCurrentJSONShape() throws {
         let json = """
         [
@@ -384,7 +674,7 @@ final class CommandAndParserTests: XCTestCase {
             "id": "sample-tunnel-id",
             "name": "dev",
             "created_at": "2026-09-03T01:02:03.123456Z",
-            "deleted_at": null,
+            "deleted_at": "0001-01-01T00:00:00Z",
             "connections": [{"colo_name":"SJC"}, {"colo_name":"LAX"}],
             "future_field": true
           }
@@ -396,6 +686,39 @@ final class CommandAndParserTests: XCTestCase {
         XCTAssertEqual(tunnels[0].name, "dev")
         XCTAssertEqual(tunnels[0].connectionCount, 2)
         XCTAssertNotNil(tunnels[0].createdAt)
+        XCTAssertNil(tunnels[0].deletedAt)
+    }
+
+    func testTunnelListParserNormalizesDeletionTimestampVariants() throws {
+        let json = """
+        [
+          {"id":"null", "name":"null", "deleted_at":null},
+          {"id":"empty", "name":"empty", "deleted_at":""},
+          {"id":"zero", "name":"zero", "deleted_at":"0001-01-01T00:00:00Z"},
+          {"id":"fractional", "name":"fractional", "deleted_at":"0001-01-01T00:00:00.000000000Z"},
+          {"id":"deleted", "name":"deleted", "deleted_at":"2026-09-04T07:46:09.123456Z"}
+        ]
+        """
+
+        let tunnels = try TunnelListParser().parse(json)
+
+        XCTAssertEqual(tunnels.count, 5)
+        XCTAssertTrue(tunnels.prefix(4).allSatisfy { $0.deletedAt == nil })
+        XCTAssertNotNil(tunnels.last?.deletedAt)
+    }
+
+    func testTunnelSelectionRecognizesIDAndNameAsTheSameTunnel() {
+        let tunnel = CloudflaredTunnel(
+            id: "Production-ID",
+            name: "production",
+            createdAt: nil,
+            deletedAt: nil,
+            connectionCount: 0
+        )
+
+        XCTAssertTrue(tunnel.matchesSelection("production-id"))
+        XCTAssertTrue(tunnel.matchesSelection(" Production "))
+        XCTAssertFalse(tunnel.matchesSelection("development"))
     }
 
     @MainActor
@@ -433,6 +756,66 @@ final class CommandAndParserTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testPreferredTunnelSelectionExcludesDeletedTunnels() throws {
+        let deletedAt = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-09-04T07:46:09Z")
+        )
+        let tunnels = [
+            CloudflaredTunnel(
+                id: "first-id",
+                name: "first",
+                createdAt: nil,
+                deletedAt: deletedAt,
+                connectionCount: 0
+            ),
+            CloudflaredTunnel(
+                id: "dev-id",
+                name: "dev",
+                createdAt: nil,
+                deletedAt: deletedAt,
+                connectionCount: 0
+            ),
+            CloudflaredTunnel(
+                id: "production-id",
+                name: "production",
+                createdAt: nil,
+                deletedAt: nil,
+                connectionCount: 0
+            )
+        ]
+
+        XCTAssertNil(
+            AppModel.resolvePreferredTunnelName(
+                configuredTunnel: "dev-id",
+                tunnels: tunnels
+            )
+        )
+        XCTAssertEqual(
+            AppModel.resolvePreferredTunnelName(
+                configuredTunnel: nil,
+                tunnels: tunnels
+            ),
+            "production"
+        )
+        XCTAssertNil(
+            AppModel.resolvePreferredTunnelName(
+                configuredTunnel: nil,
+                tunnels: Array(tunnels.prefix(2))
+            )
+        )
+
+        let parsed = try TunnelListParser().parse(
+            """
+            [{"id":"dev-id","name":"dev","deleted_at":"0001-01-01T00:00:00.000000000Z"}]
+            """
+        )
+        XCTAssertEqual(
+            AppModel.resolvePreferredTunnelName(configuredTunnel: nil, tunnels: parsed),
+            "dev"
+        )
+    }
+
     func testVersionAndInstallSourceDetection() {
         XCTAssertEqual(
             CloudflaredExecutableDetector.parseVersion("cloudflared version 2026.8.3 (built 2026-08-31)"),
@@ -455,6 +838,38 @@ final class CommandAndParserTests: XCTestCase {
         XCTAssertFalse(result.contains("eyJabcdefghijkl"))
         XCTAssertFalse(result.contains(home))
         XCTAssertTrue(result.contains("<已隐藏>"))
+    }
+
+    func testSensitiveLogRedactionHandlesStructuredAndQuotedSecrets() {
+        let input = #"""
+        {"token":"json secret","authorization":"Bearer json-secret","headers":{"cookie":["session=abc","csrf=def"]}}
+        level=debug tunnel_token="log fmt secret" api_token=bare-secret keep=yes
+        Authorization: Bearer "quoted secret value"
+        Cookie: session=header-secret; csrf=header-csrf
+        https://example.test/?access_token=query-secret&safe=kept
+        cloudflared --token 'command secret'
+        """#
+
+        let result = SensitiveLogRedactor().redact(input)
+
+        for secret in [
+            "json secret",
+            "json-secret",
+            "session=abc",
+            "csrf=def",
+            "log fmt secret",
+            "bare-secret",
+            "quoted secret value",
+            "header-secret",
+            "header-csrf",
+            "query-secret",
+            "command secret"
+        ] {
+            XCTAssertFalse(result.contains(secret), "Leaked \(secret): \(result)")
+        }
+        XCTAssertTrue(result.contains("keep=yes"), result)
+        XCTAssertTrue(result.contains("safe=kept"), result)
+        XCTAssertTrue(result.contains("<已隐藏>"), result)
     }
 
     func testDNSRouteBuildsAnArgumentPlan() {
@@ -510,6 +925,26 @@ final class CommandAndParserTests: XCTestCase {
         XCTAssertFalse(output.contains("CLOUDFLARED_"))
     }
 
+}
+
+@MainActor
+private final class LoginCompletionRecorder {
+    var callCount = 0
+}
+
+private func makeOriginCertificate(
+    zoneID: String = "zone-id",
+    apiToken: String = "api-token"
+) throws -> Data {
+    let payload = try JSONSerialization.data(withJSONObject: [
+        "zoneID": zoneID,
+        "accountID": "account-id",
+        "apiToken": apiToken
+    ])
+    let encoded = payload.base64EncodedString(options: .lineLength64Characters)
+    return Data(
+        "-----BEGIN ARGO TUNNEL TOKEN-----\n\(encoded)\n-----END ARGO TUNNEL TOKEN-----\n".utf8
+    )
 }
 
 private struct DetectorStubRunner: CommandRunning {

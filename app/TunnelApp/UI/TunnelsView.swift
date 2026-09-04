@@ -66,7 +66,6 @@ struct TunnelsView: View {
                     .width(min: 90, ideal: 110)
                 }
                 .tableStyle(.inset(alternatesRowBackgrounds: true))
-                .scrollIndicators(.never)
             }
         }
         .appPageBackground()

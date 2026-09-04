@@ -6,12 +6,30 @@ struct OverviewView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var runnableTunnel: String? {
-        model.preferredTunnelName
+        switch process.processState {
+        case .running, .starting:
+            return process.managedTunnelName
+        default:
+            return model.preferredTunnelName
+        }
     }
 
     private var displayedTunnelName: String {
         guard let runnableTunnel else { return "尚未选择 Tunnel" }
         return runnableTunnel
+    }
+
+    private var currentOriginState: OriginReachabilityState {
+        model.originState(for: model.currentOriginService)
+    }
+
+    private var visibleStartupAutomationMessage: String? {
+        guard let message = model.startupAutomationMessage else { return nil }
+        guard message == "已按设置启动当前 Tunnel。" else { return message }
+        switch process.processState {
+        case .starting, .running: return message
+        case .stopped, .failed: return nil
+        }
     }
 
     var body: some View {
@@ -26,7 +44,7 @@ struct OverviewView: View {
                 managedTunnelSection
                 environmentSection
 
-                if let message = model.startupAutomationMessage {
+                if let message = visibleStartupAutomationMessage {
                     NoticeView(kind: .info, title: "自动启动", message: message)
                 }
 
@@ -65,7 +83,7 @@ struct OverviewView: View {
         }
         .animation(AppMotion.content(reduceMotion), value: process.processState)
         .animation(AppMotion.content(reduceMotion), value: process.edgeState)
-        .animation(AppMotion.content(reduceMotion), value: model.originState)
+        .animation(AppMotion.content(reduceMotion), value: currentOriginState)
     }
 
     private var statusBoard: some View {
@@ -91,12 +109,12 @@ struct OverviewView: View {
             ),
             StatusMetric(
                 title: "本地源站",
-                value: model.originState.label,
-                detail: "独立探测，避免 Tunnel 已连接却掩盖源站故障。",
-                symbol: StatusAppearance.originSymbol(model.originState),
-                tint: StatusAppearance.originTint(model.originState),
+                value: currentOriginState.label,
+                detail: originDetail,
+                symbol: StatusAppearance.originSymbol(currentOriginState),
+                tint: StatusAppearance.originTint(currentOriginState),
                 isTransient: {
-                    if case .checking = model.originState { return true }
+                    if case .checking = currentOriginState { return true }
                     return false
                 }()
             )
@@ -234,9 +252,41 @@ struct OverviewView: View {
 
     private var processDetail: String {
         if case let .running(pid) = process.processState {
+            if let tunnelName = process.managedTunnelName {
+                return "本 App 管理 \(tunnelName)，PID \(pid)。"
+            }
             return "本 App 管理的 PID \(pid)。"
         }
         return "此状态不代表系统中不存在其他后台服务。"
+    }
+
+    private var originDetail: String {
+        guard let service = model.currentOriginService else {
+            return "当前配置没有可独立检查的源站。"
+        }
+        if let failure = currentOriginState.failureMessage {
+            return failure
+        }
+        switch currentOriginState {
+        case .notChecked:
+            return "尚未独立检查 \(service)。"
+        case .checking:
+            return "正在独立检查 \(service)。"
+        case .reachable:
+            if let latency = model.originLatency(for: service) {
+                return "已独立检查 \(service)，耗时 \(formattedLatency(latency))。"
+            }
+            return "已独立检查 \(service)。"
+        case .unreachable:
+            return "源站当前无法访问。"
+        }
+    }
+
+    private func formattedLatency(_ latency: TimeInterval) -> String {
+        if latency < 1 {
+            return "\(Int((latency * 1_000).rounded())) 毫秒"
+        }
+        return "\(latency.formatted(.number.precision(.fractionLength(1)))) 秒"
     }
 
     private var edgeDetail: String {

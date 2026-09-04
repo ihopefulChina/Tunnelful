@@ -1,10 +1,13 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 struct ConfigurationSourceState: Equatable, Sendable {
     let requestedURL: URL
     let effectiveURL: URL
     let contentDigest: Data
+    let deviceIdentifier: UInt64?
+    let fileIdentifier: UInt64?
 }
 
 final class ConfigurationSourceSnapshot: @unchecked Sendable, Equatable {
@@ -94,13 +97,23 @@ enum ConfigurationStoreError: LocalizedError, Equatable {
     }
 }
 
+enum ConfigurationAtomicReplacementPhase: Equatable, Sendable {
+    case beforeReplacement
+    case beforeRollback
+}
+
 struct CloudflaredConfigurationStore: @unchecked Sendable {
     private let fileManager: FileManager
+    private let atomicReplacementObserver: @Sendable (ConfigurationAtomicReplacementPhase) -> Void
     private let parser = CloudflaredConfigParser()
     private let serializer = CloudflaredConfigSerializer()
 
-    init(fileManager: FileManager = .default) {
+    init(
+        fileManager: FileManager = .default,
+        atomicReplacementObserver: @escaping @Sendable (ConfigurationAtomicReplacementPhase) -> Void = { _ in }
+    ) {
         self.fileManager = fileManager
+        self.atomicReplacementObserver = atomicReplacementObserver
     }
 
     func load(from url: URL) throws -> CloudflaredConfigDocument {
@@ -112,7 +125,12 @@ struct CloudflaredConfigurationStore: @unchecked Sendable {
         }
         var document = try parser.parse(contents: contents, sourceURL: requestedURL)
         document.sourceSnapshot = ConfigurationSourceSnapshot(
-            state: sourceState(requestedURL: requestedURL, effectiveURL: effectiveURL, bytes: bytes)
+            state: sourceState(
+                requestedURL: requestedURL,
+                effectiveURL: effectiveURL,
+                identityURL: effectiveURL,
+                bytes: bytes
+            )
         )
         return document
     }
@@ -131,6 +149,7 @@ struct CloudflaredConfigurationStore: @unchecked Sendable {
         let currentState = sourceState(
             requestedURL: requestedURL,
             effectiveURL: effectiveURL,
+            identityURL: effectiveURL,
             bytes: bytes
         )
         guard currentState == expectedState else {
@@ -163,7 +182,12 @@ struct CloudflaredConfigurationStore: @unchecked Sendable {
 
         let existingBytes = try existingContents(at: effectiveURL)
         let stateBeforeSave = existingBytes.map {
-            sourceState(requestedURL: requestedURL, effectiveURL: effectiveURL, bytes: $0)
+            sourceState(
+                requestedURL: requestedURL,
+                effectiveURL: effectiveURL,
+                identityURL: effectiveURL,
+                bytes: $0
+            )
         }
         let trackedSnapshot = document.sourceSnapshot
         let expectedState = trackedSnapshot?.currentState()
@@ -172,34 +196,180 @@ struct CloudflaredConfigurationStore: @unchecked Sendable {
             throw ConfigurationStoreError.fileChangedSinceLoad
         }
 
-        let existingAttributes = try? fileManager.attributesOfItem(atPath: effectiveURL.path)
-        let permissions = existingAttributes?[.posixPermissions] as? NSNumber ?? NSNumber(value: 0o600)
-        let backupURL = try backupIfNeeded(
-            sourceURL: effectiveURL,
-            contents: existingBytes,
-            permissions: permissions
-        )
-
-        if let stateBeforeSave {
-            let currentEffectiveURL = try effectiveDestination(for: requestedURL)
-            guard let currentBytes = try existingContents(at: currentEffectiveURL),
-                  sourceState(
-                    requestedURL: requestedURL,
-                    effectiveURL: currentEffectiveURL,
-                    bytes: currentBytes
-                  ) == stateBeforeSave else {
-                throw ConfigurationStoreError.fileChangedSinceLoad
+        let bytes = Data(serializer.serialize(document).utf8)
+        let stagingURL = try writeStagingFile(bytes, beside: effectiveURL)
+        var stagingFileStillExists = true
+        defer {
+            if stagingFileStillExists {
+                try? fileManager.removeItem(at: stagingURL)
             }
         }
 
-        let bytes = Data(serializer.serialize(document).utf8)
-        try bytes.write(to: effectiveURL, options: .atomic)
-        try fileManager.setAttributes([.posixPermissions: permissions], ofItemAtPath: effectiveURL.path)
+        var accessorError: Error?
+        var coordinationError: NSError?
+        var backupURL: URL?
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        coordinator.coordinate(
+            writingItemAt: effectiveURL,
+            options: .forReplacing,
+            error: &coordinationError
+        ) { _ in
+            do {
+                let preparedBackupURL = try prepareBackupURLIfNeeded(
+                    sourceURL: effectiveURL,
+                    hasExistingContents: existingBytes != nil
+                )
+                if existingBytes != nil {
+                    // Prepare the replacement's security metadata before the final
+                    // content check. The displaced source is copied once more after
+                    // the atomic swap so a last-moment ACL/xattr change is retained.
+                    try copySecurityMetadata(from: effectiveURL, to: stagingURL)
+                }
+
+                let currentEffectiveURL = try effectiveDestination(for: requestedURL)
+                let currentBytes = try existingContents(at: currentEffectiveURL)
+                let currentState = currentBytes.map {
+                    sourceState(
+                        requestedURL: requestedURL,
+                        effectiveURL: currentEffectiveURL,
+                        identityURL: currentEffectiveURL,
+                        bytes: $0
+                    )
+                }
+                guard currentState == stateBeforeSave else {
+                    throw ConfigurationStoreError.fileChangedSinceLoad
+                }
+
+                // This hook exists only to make the otherwise microscopic
+                // check-to-replacement race deterministic in regression tests.
+                atomicReplacementObserver(.beforeReplacement)
+                if currentBytes != nil {
+                    let installedState = sourceState(
+                        requestedURL: requestedURL,
+                        effectiveURL: currentEffectiveURL,
+                        identityURL: stagingURL,
+                        bytes: bytes
+                    )
+                    try swapAtomically(stagingURL, destinationURL: currentEffectiveURL)
+                    do {
+                        let displacedBytes = try Data(contentsOf: stagingURL)
+                        let displacedState = sourceState(
+                            requestedURL: requestedURL,
+                            effectiveURL: currentEffectiveURL,
+                            identityURL: stagingURL,
+                            bytes: displacedBytes
+                        )
+                        let latestEffectiveURL = try effectiveDestination(for: requestedURL)
+                        guard latestEffectiveURL == currentEffectiveURL,
+                              displacedState == stateBeforeSave else {
+                            throw ConfigurationStoreError.fileChangedSinceLoad
+                        }
+
+                        // The file at stagingURL is the exact inode displaced by the
+                        // swap. Copy its latest metadata, then move that inode into the
+                        // backup directory without reconstructing it.
+                        try copySecurityMetadata(from: stagingURL, to: currentEffectiveURL)
+                        if let preparedBackupURL {
+                            try moveAtomically(stagingURL, destinationURL: preparedBackupURL)
+                            backupURL = preparedBackupURL
+                            stagingFileStillExists = false
+                        }
+                    } catch let replacementError {
+                        atomicReplacementObserver(.beforeRollback)
+                        let destinationBytes = try existingContents(at: currentEffectiveURL)
+                        let destinationState = destinationBytes.map {
+                            sourceState(
+                                requestedURL: requestedURL,
+                                effectiveURL: currentEffectiveURL,
+                                identityURL: currentEffectiveURL,
+                                bytes: $0
+                            )
+                        }
+                        guard destinationState == installedState else {
+                            do {
+                                if let preparedBackupURL {
+                                    try moveAtomically(stagingURL, destinationURL: preparedBackupURL)
+                                    backupURL = preparedBackupURL
+                                    stagingFileStillExists = false
+                                } else {
+                                    // The displaced source is more important than
+                                    // removing a hidden recovery file.
+                                    stagingFileStillExists = false
+                                }
+                            } catch {
+                                // Leave stagingURL in place for manual recovery.
+                                stagingFileStillExists = false
+                                throw error
+                            }
+                            throw replacementError
+                        }
+
+                        do {
+                            try swapAtomically(stagingURL, destinationURL: currentEffectiveURL)
+                        } catch {
+                            // Preserve the displaced source as a recovery file if even
+                            // the atomic rollback cannot be completed.
+                            stagingFileStillExists = false
+                            throw error
+                        }
+
+                        let rolledOutBytes = try Data(contentsOf: stagingURL)
+                        let rolledOutState = sourceState(
+                            requestedURL: requestedURL,
+                            effectiveURL: currentEffectiveURL,
+                            identityURL: stagingURL,
+                            bytes: rolledOutBytes
+                        )
+                        guard rolledOutState == installedState else {
+                            do {
+                                // A third-party version landed between the preflight
+                                // check and rollback. Put it back at the destination.
+                                try swapAtomically(stagingURL, destinationURL: currentEffectiveURL)
+                            } catch {
+                                // Never delete the unknown version now held at stagingURL.
+                                stagingFileStillExists = false
+                                throw error
+                            }
+                            do {
+                                if let preparedBackupURL {
+                                    try moveAtomically(stagingURL, destinationURL: preparedBackupURL)
+                                    backupURL = preparedBackupURL
+                                    stagingFileStillExists = false
+                                } else {
+                                    stagingFileStillExists = false
+                                }
+                            } catch {
+                                stagingFileStillExists = false
+                                throw error
+                            }
+                            throw replacementError
+                        }
+                        throw replacementError
+                    }
+                } else {
+                    do {
+                        try installAtomicallyIfAbsent(stagingURL, destinationURL: currentEffectiveURL)
+                        stagingFileStillExists = false
+                    } catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == EEXIST {
+                        throw ConfigurationStoreError.fileChangedSinceLoad
+                    }
+                }
+            } catch {
+                accessorError = error
+            }
+        }
+        if let accessorError {
+            throw accessorError
+        }
+        if let coordinationError {
+            throw coordinationError
+        }
 
         if let trackedSnapshot, expectedState?.requestedURL == requestedURL {
             trackedSnapshot.update(to: sourceState(
                 requestedURL: requestedURL,
                 effectiveURL: effectiveURL,
+                identityURL: effectiveURL,
                 bytes: bytes
             ))
         }
@@ -227,20 +397,105 @@ struct CloudflaredConfigurationStore: @unchecked Sendable {
         return try Data(contentsOf: url)
     }
 
-    private func sourceState(requestedURL: URL, effectiveURL: URL, bytes: Data) -> ConfigurationSourceState {
-        ConfigurationSourceState(
+    private func sourceState(
+        requestedURL: URL,
+        effectiveURL: URL,
+        identityURL: URL,
+        bytes: Data
+    ) -> ConfigurationSourceState {
+        let attributes = try? fileManager.attributesOfItem(atPath: identityURL.path)
+        return ConfigurationSourceState(
             requestedURL: requestedURL.standardizedFileURL,
             effectiveURL: effectiveURL.standardizedFileURL,
-            contentDigest: Data(SHA256.hash(data: bytes))
+            contentDigest: Data(SHA256.hash(data: bytes)),
+            deviceIdentifier: (attributes?[.systemNumber] as? NSNumber)?.uint64Value,
+            fileIdentifier: (attributes?[.systemFileNumber] as? NSNumber)?.uint64Value
         )
     }
 
-    private func backupIfNeeded(
+    private func writeStagingFile(_ bytes: Data, beside destinationURL: URL) throws -> URL {
+        let stagingURL = destinationURL.deletingLastPathComponent().appendingPathComponent(
+            ".\(destinationURL.lastPathComponent).\(UUID().uuidString).tmp"
+        )
+        let descriptor = stagingURL.path.withCString {
+            open($0, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR)
+        }
+        guard descriptor >= 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        do {
+            try handle.write(contentsOf: bytes)
+            try handle.synchronize()
+            try handle.close()
+            return stagingURL
+        } catch {
+            try? handle.close()
+            try? fileManager.removeItem(at: stagingURL)
+            throw error
+        }
+    }
+
+    private func copySecurityMetadata(from sourceURL: URL, to destinationURL: URL) throws {
+        let replacementModificationDate = Date()
+        let result = sourceURL.path.withCString { sourcePath in
+            destinationURL.path.withCString { destinationPath in
+                copyfile(
+                    sourcePath,
+                    destinationPath,
+                    nil,
+                    copyfile_flags_t(COPYFILE_METADATA | COPYFILE_NOFOLLOW)
+                )
+            }
+        }
+        guard result == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+        try fileManager.setAttributes(
+            [.modificationDate: replacementModificationDate],
+            ofItemAtPath: destinationURL.path
+        )
+    }
+
+    private func swapAtomically(_ stagingURL: URL, destinationURL: URL) throws {
+        let result = stagingURL.path.withCString { stagingPath in
+            destinationURL.path.withCString { destinationPath in
+                renamex_np(stagingPath, destinationPath, UInt32(RENAME_SWAP))
+            }
+        }
+        guard result == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+    }
+
+    private func installAtomicallyIfAbsent(_ stagingURL: URL, destinationURL: URL) throws {
+        let result = stagingURL.path.withCString { stagingPath in
+            destinationURL.path.withCString { destinationPath in
+                renamex_np(stagingPath, destinationPath, UInt32(RENAME_EXCL))
+            }
+        }
+        guard result == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+    }
+
+    private func moveAtomically(_ sourceURL: URL, destinationURL: URL) throws {
+        let result = sourceURL.path.withCString { sourcePath in
+            destinationURL.path.withCString { destinationPath in
+                renamex_np(sourcePath, destinationPath, UInt32(RENAME_EXCL))
+            }
+        }
+        guard result == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+    }
+
+    private func prepareBackupURLIfNeeded(
         sourceURL: URL,
-        contents: Data?,
-        permissions: NSNumber
+        hasExistingContents: Bool
     ) throws -> URL? {
-        guard let contents else { return nil }
+        guard hasExistingContents else { return nil }
 
         let backupDirectory = sourceURL.deletingLastPathComponent()
             .appendingPathComponent("backups", isDirectory: true)
@@ -258,14 +513,8 @@ struct CloudflaredConfigurationStore: @unchecked Sendable {
         formatter.formatOptions = [.withInternetDateTime]
         let stamp = formatter.string(from: Date())
             .replacingOccurrences(of: ":", with: "-")
-        var backupURL = backupDirectory.appendingPathComponent("\(sourceURL.lastPathComponent).\(stamp).bak")
-        if fileManager.fileExists(atPath: backupURL.path) {
-            backupURL = backupDirectory.appendingPathComponent(
-                "\(sourceURL.lastPathComponent).\(stamp).\(UUID().uuidString.prefix(8)).bak"
-            )
-        }
-        try contents.write(to: backupURL, options: .withoutOverwriting)
-        try fileManager.setAttributes([.posixPermissions: permissions], ofItemAtPath: backupURL.path)
-        return backupURL
+        return backupDirectory.appendingPathComponent(
+            "\(sourceURL.lastPathComponent).\(stamp).\(UUID().uuidString.prefix(8)).bak"
+        )
     }
 }

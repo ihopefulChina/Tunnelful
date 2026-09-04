@@ -65,7 +65,12 @@ struct CloudflaredConfigDocument: Equatable, Sendable {
     fileprivate var ingressLeadingLines: [String]
     fileprivate var ingressHeaderLine: String
     fileprivate var ingressRuleIndent: Int
+    fileprivate var originalTunnel: String?
     var sourceSnapshot: ConfigurationSourceSnapshot?
+
+    var primaryIngressRule: IngressRule? {
+        ingress.first(where: { !$0.isCatchAll })
+    }
 
     init(
         sourceURL: URL? = nil,
@@ -88,6 +93,7 @@ struct CloudflaredConfigDocument: Equatable, Sendable {
         self.ingressLeadingLines = ingressLeadingLines
         self.ingressHeaderLine = ingressHeaderLine
         self.ingressRuleIndent = ingressRuleIndent
+        originalTunnel = tunnel
         self.sourceSnapshot = sourceSnapshot
     }
 
@@ -182,6 +188,24 @@ enum ConfigParsingError: LocalizedError, Equatable {
         case let .malformedIngress(message):
             return "无法读取 ingress 部分：\(message)"
         }
+    }
+}
+
+private enum YAMLTopLevelScalarLine {
+    static func rawValue(for key: String, in line: String) -> String? {
+        guard line.first?.isWhitespace != true else { return nil }
+
+        for spelling in [key, "'\(key)'", "\"\(key)\""] where line.hasPrefix(spelling) {
+            let remainder = line.dropFirst(spelling.count)
+            let colon = remainder.drop(while: { $0 == " " || $0 == "\t" })
+            guard colon.first == ":" else { continue }
+            return String(colon.dropFirst())
+        }
+        return nil
+    }
+
+    static func matches(_ key: String, in line: String) -> Bool {
+        rawValue(for: key, in: line) != nil
     }
 }
 
@@ -354,8 +378,10 @@ struct CloudflaredConfigParser: Sendable {
 
     private func scalarValue(for key: String, in lines: [String]) -> String? {
         lines.lazy.compactMap { line -> String? in
-            guard leadingWhitespaceCount(line) == 0 else { return nil }
-            return parsedField(key, from: line.trimmingCharacters(in: .whitespaces))?.value
+            guard let rawValue = YAMLTopLevelScalarLine.rawValue(for: key, in: line) else {
+                return nil
+            }
+            return decodeScalar(splitTrailingComment(rawValue).value)
         }.first
     }
 
@@ -490,7 +516,46 @@ struct CloudflaredConfigParser: Sendable {
 
 struct CloudflaredConfigSerializer: Sendable {
     func serialize(_ document: CloudflaredConfigDocument) -> String {
-        var lines = document.prefixLines
+        var prefixLines = document.prefixLines
+        var suffixLines = document.suffixLines
+        let normalizedTunnel = normalized(document.tunnel)
+        let tunnelChanged = normalizedTunnel != normalized(document.originalTunnel)
+        let tunnelExists = containsTopLevelScalar("tunnel", in: prefixLines)
+            || containsTopLevelScalar("tunnel", in: suffixLines)
+
+        if tunnelChanged {
+            let prefixResult = replacingTopLevelScalar(
+                "tunnel",
+                value: normalizedTunnel,
+                in: prefixLines
+            )
+            prefixLines = prefixResult.lines
+            var tunnelWasFound = prefixResult.found
+            if !tunnelWasFound {
+                let suffixResult = replacingTopLevelScalar(
+                    "tunnel",
+                    value: normalizedTunnel,
+                    in: suffixLines
+                )
+                suffixLines = suffixResult.lines
+                tunnelWasFound = suffixResult.found
+            }
+            if !tunnelWasFound, let normalizedTunnel {
+                insertTopLevelScalar(
+                    "tunnel",
+                    value: normalizedTunnel,
+                    into: &prefixLines
+                )
+            }
+        } else if !tunnelExists, let normalizedTunnel {
+            insertTopLevelScalar(
+                "tunnel",
+                value: normalizedTunnel,
+                into: &prefixLines
+            )
+        }
+
+        var lines = prefixLines
         lines.append(document.ingressHeaderLine)
         lines.append(contentsOf: document.ingressLeadingLines)
         let ruleIndent = String(repeating: " ", count: document.ingressRuleIndent)
@@ -518,8 +583,70 @@ struct CloudflaredConfigSerializer: Sendable {
             }
             lines.append(contentsOf: rule.preservedLines)
         }
-        lines.append(contentsOf: document.suffixLines)
+        lines.append(contentsOf: suffixLines)
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    private func containsTopLevelScalar(_ key: String, in lines: [String]) -> Bool {
+        lines.contains { YAMLTopLevelScalarLine.matches(key, in: $0) }
+    }
+
+    private func replacingTopLevelScalar(
+        _ key: String,
+        value: String?,
+        in lines: [String]
+    ) -> (lines: [String], found: Bool) {
+        guard let index = lines.firstIndex(where: {
+            YAMLTopLevelScalarLine.matches(key, in: $0)
+        }) else {
+            return (lines, false)
+        }
+
+        var result = lines
+        guard let value else {
+            result.remove(at: index)
+            return (result, true)
+        }
+        let comment = trailingComment(in: result[index])
+        result[index] = "\(key): \(quoted(value))\(formatted(comment))"
+        return (result, true)
+    }
+
+    private func insertTopLevelScalar(
+        _ key: String,
+        value: String,
+        into lines: inout [String]
+    ) {
+        let insertionIndex = lines.lastIndex(where: {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }).map { lines.index(after: $0) } ?? lines.startIndex
+        lines.insert("\(key): \(quoted(value))", at: insertionIndex)
+    }
+
+    private func trailingComment(in line: String) -> String? {
+        var singleQuoted = false
+        var doubleQuoted = false
+        var escaped = false
+        var previousWasWhitespace = true
+
+        for index in line.indices {
+            let character = line[index]
+            if doubleQuoted, character == "\\", !escaped {
+                escaped = true
+                previousWasWhitespace = false
+                continue
+            }
+            if character == "'", !doubleQuoted {
+                singleQuoted.toggle()
+            } else if character == "\"", !singleQuoted, !escaped {
+                doubleQuoted.toggle()
+            } else if character == "#", !singleQuoted, !doubleQuoted, previousWasWhitespace {
+                return String(line[index...])
+            }
+            previousWasWhitespace = character.isWhitespace
+            escaped = false
+        }
+        return nil
     }
 
     private func normalized(_ value: String?) -> String? {

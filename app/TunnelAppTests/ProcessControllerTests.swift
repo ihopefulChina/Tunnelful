@@ -5,6 +5,63 @@ import XCTest
 
 @MainActor
 final class ProcessControllerTests: XCTestCase {
+    func testShutdownPermanentlyRejectsLaterStartsAndRestarts() throws {
+        let controller = TunnelProcessController()
+        var shutdownCompleted = false
+
+        controller.shutdown {
+            shutdownCompleted = true
+        }
+
+        XCTAssertTrue(shutdownCompleted)
+        XCTAssertThrowsError(try controller.start(
+            executableURL: URL(fileURLWithPath: "/usr/bin/true"),
+            arguments: [],
+            tunnelName: "late-start"
+        )) { error in
+            XCTAssertEqual(error as? CloudflaredError, .commandCancelled)
+        }
+        XCTAssertThrowsError(try controller.restart(
+            executableURL: URL(fileURLWithPath: "/usr/bin/true"),
+            arguments: [],
+            tunnelName: "late-restart"
+        )) { error in
+            XCTAssertEqual(error as? CloudflaredError, .commandCancelled)
+        }
+        XCTAssertEqual(controller.processState, .stopped)
+        XCTAssertNil(controller.managedTunnelName)
+    }
+
+    func testManagedTunnelIdentityFollowsStartAndRestart() throws {
+        let controller = TunnelProcessController(terminationGracePeriod: 0.1)
+        try controller.start(
+            executableURL: URL(fileURLWithPath: "/bin/sleep"),
+            arguments: ["30"],
+            tunnelName: "first"
+        )
+        XCTAssertEqual(controller.managedTunnelName, "first")
+
+        let restarted = expectation(description: "replacement process started")
+        var observation: AnyCancellable?
+        observation = controller.$managedTunnelName.dropFirst().sink { name in
+            guard name == "second" else { return }
+            restarted.fulfill()
+            observation?.cancel()
+        }
+        try controller.restart(
+            executableURL: URL(fileURLWithPath: "/bin/sleep"),
+            arguments: ["30"],
+            tunnelName: "second"
+        )
+        wait(for: [restarted], timeout: 2)
+        XCTAssertEqual(controller.managedTunnelName, "second")
+
+        let stopped = expectation(description: "cleanup")
+        controller.shutdown { stopped.fulfill() }
+        wait(for: [stopped], timeout: 2)
+        XCTAssertNil(controller.managedTunnelName)
+    }
+
     func testUnexpectedSignalIsReportedAsFailure() throws {
         let controller = TunnelProcessController()
         try controller.start(
@@ -112,6 +169,7 @@ final class ProcessControllerTests: XCTestCase {
         }
         XCTAssertEqual(controller.processState, .failed(exitCode: -1))
         XCTAssertEqual(controller.edgeState, .unknown)
+        XCTAssertNil(controller.managedTunnelName)
     }
 
     func testLogsAreBufferedByLineAndRedactedBeforeProcessExit() throws {
@@ -167,7 +225,7 @@ final class ProcessControllerTests: XCTestCase {
         )
         let visibleLogs = controller.logs.map(\.message).joined(separator: "\n")
         XCTAssertFalse(visibleLogs.contains("sample-token"))
-        XCTAssertTrue(visibleLogs.contains("Authorization: Bearer <已隐藏>"))
+        XCTAssertTrue(visibleLogs.contains("Authorization: <已隐藏>"))
     }
 
     func testTrailingLogTextWithoutNewlineIsFlushedAtExit() throws {
@@ -195,7 +253,9 @@ final class ProcessControllerTests: XCTestCase {
             finished.fulfill()
             processObservation?.cancel()
         }
-        wait(for: [finished], timeout: 1.5)
+        // This verifies drain ordering, not a 1.5-second process-launch SLA.
+        // Foundation and GCD delivery can be delayed by concurrent release builds.
+        wait(for: [finished], timeout: 5)
 
         XCTAssertTrue(controller.logs.contains {
             $0.stream == .standardOutput && $0.message == "stdout-without-newline"

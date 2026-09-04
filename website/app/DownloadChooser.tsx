@@ -20,9 +20,9 @@ type NavigatorWithUserAgentData = Navigator & {
 };
 
 const armDownloadURL =
-  'https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.9/Tunnelful-0.1.9-arm64.dmg';
+  'https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.10/Tunnelful-0.1.10-arm64.dmg';
 const intelDownloadURL =
-  'https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.9/Tunnelful-0.1.9-x86_64.dmg';
+  'https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.10/Tunnelful-0.1.10-x86_64.dmg';
 
 function normalizedArchitecture(value?: string): Architecture {
   const architecture = value?.toLowerCase();
@@ -141,6 +141,10 @@ export default function DownloadChooser() {
       <p className="compatibility">macOS 14 及更高版本</p>
       <p className="installer-note">
         尚未经过 Apple 公证；首次打开时，macOS 可能需要你在“隐私与安全性”中确认。
+      </p>
+      <p className="migration-note">
+        <strong>从 0.1.9 或更早版本升级：</strong>
+        旧版更新窗口只会引导前往 Release 页面。若启用了登录项，请先在旧版设置中关闭；退出并手动安装 0.1.10 后，再按需重新开启。其余偏好设置会自动迁移。
       </p>
     </div>
   );

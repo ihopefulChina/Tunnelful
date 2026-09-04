@@ -24,7 +24,7 @@ struct TunnelListParser: Sendable {
                 id: id,
                 name: name,
                 createdAt: Self.dateValue(row["created_at"]),
-                deletedAt: Self.dateValue(row["deleted_at"]),
+                deletedAt: Self.deletedDateValue(row["deleted_at"]),
                 connectionCount: connections.count
             )
         }
@@ -52,5 +52,22 @@ struct TunnelListParser: Sendable {
         let regular = ISO8601DateFormatter()
         regular.formatOptions = [.withInternetDateTime]
         return regular.date(from: text)
+    }
+
+    private static func deletedDateValue(_ value: Any?) -> Date? {
+        guard let text = value as? String else { return nil }
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty, !isGoZeroTime(normalized) else { return nil }
+        return dateValue(normalized)
+    }
+
+    private static func isGoZeroTime(_ value: String) -> Bool {
+        let prefix = "0001-01-01T00:00:00"
+        guard value.hasPrefix(prefix), value.hasSuffix("Z") else { return false }
+
+        let suffix = value.dropFirst(prefix.count).dropLast()
+        if suffix.isEmpty { return true }
+        guard suffix.first == ".", suffix.count > 1 else { return false }
+        return suffix.dropFirst().allSatisfy { $0 == "0" }
     }
 }

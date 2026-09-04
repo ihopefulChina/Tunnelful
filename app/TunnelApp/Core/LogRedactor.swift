@@ -17,9 +17,30 @@ struct SensitiveLogRedactor: LogRedacting {
             for: FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
         )
         let definitions: [(String, String)] = [
-            (#"(?i)(authorization\s*[:=]\s*bearer\s+)[^\s,;]+"#, "$1<已隐藏>"),
-            (#"(?i)((?:tunnel[_-]?token|token)\s*[:=]\s*)[^\s,;]+"#, "$1<已隐藏>"),
-            (#"(?i)(--token(?:=|\s+))[^\s]+"#, "$1<已隐藏>"),
+            (
+                #"(?im)^([ \t]*(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|cf-access-client-secret)[ \t]*:[ \t]*)[^\r\n]*"#,
+                "$1<已隐藏>"
+            ),
+            (
+                #"(?i)(\"(?:tunnel[_-]?token|access[_-]?token|api[_-]?token|token|client[_-]?secret|password|passwd|api[_-]?key|x-api-key|cf-access-client-secret|authorization|proxy-authorization|cookie|set-cookie)\"\s*:\s*)\[[^\]\r\n]*\]"#,
+                "$1[\"<已隐藏>\"]"
+            ),
+            (
+                #"(?i)(\"(?:tunnel[_-]?token|access[_-]?token|api[_-]?token|token|client[_-]?secret|password|passwd|api[_-]?key|x-api-key|cf-access-client-secret|authorization|proxy-authorization|cookie|set-cookie)\"\s*:\s*)\"(?:\\.|[^\"\\])*\""#,
+                "$1\"<已隐藏>\""
+            ),
+            (
+                #"(?i)(--(?:tunnel-?token|access-token|api-token|token|client-secret|password|api-key)(?:=|\s+))(?:\"(?:\\.|[^\"\\])*\"|'[^'\r\n]*'|[^\s,;&]+)"#,
+                "$1<已隐藏>"
+            ),
+            (
+                #"(?i)(\b(?:authorization|proxy-authorization)\s*[:=]\s*(?:bearer|basic)\s+)(?:\"(?:\\.|[^\"\\])*\"|'[^'\r\n]*'|[^\s,;&]+)"#,
+                "$1<已隐藏>"
+            ),
+            (
+                #"(?i)(\b(?:tunnel[_-]?token|access[_-]?token|api[_-]?token|token|client[_-]?secret|password|passwd|api[_-]?key|x-api-key|cf-access-client-secret|authorization|proxy-authorization|cookie|set-cookie)\b\s*[:=]\s*)(?:\"(?:\\.|[^\"\\])*\"|'[^'\r\n]*'|[^\s,;&]+)"#,
+                "$1<已隐藏>"
+            ),
             (#"\beyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]{8,})?\b"#, "<令牌已隐藏>"),
             ("\(home)(?=/|\\b)", "\\$HOME")
         ]

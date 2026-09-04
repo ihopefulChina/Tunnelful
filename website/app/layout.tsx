@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://ihopefulchina.github.io/Tunnelful/'),
   title: 'Tunnelful — Cloudflare Tunnel 的原生 Mac 控制工具',
   description:
-    '编辑 Ingress、确认并执行 DNS 路由命令，以及启动或停止 Tunnel。窗口关闭后仍常驻菜单栏。',
+    '安全编辑 Ingress、预览并确认 DNS 路由，分别查看进程、Edge 与源站状态。窗口关闭后仍常驻菜单栏。',
   icons: {
     icon: `${basePath}/tunnelful-icon.png`,
   },

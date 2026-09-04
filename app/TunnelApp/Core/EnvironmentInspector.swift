@@ -52,7 +52,8 @@ struct EnvironmentInspector: @unchecked Sendable {
         launchAtLoginState: LaunchAtLoginState,
         startTunnelOnLaunch: Bool
     ) -> EnvironmentReport {
-        let certificate = firstUsableFile(in: certificateCandidates)
+        let certificate = firstValidCertificate(in: certificateCandidates)
+        let hasInvalidCertificate = certificate == nil && certificateCandidates.contains(where: itemExists(at:))
         let credentialsURL = resolvedCredentialsURL(for: configDocument)
         let credentials = credentialsURL.flatMap(fileSnapshot(at:))
         let hasCredentials = credentials?.isUsable == true
@@ -147,6 +148,13 @@ struct EnvironmentInspector: @unchecked Sendable {
                     : "已发现 cert.pem，但文件权限可能过宽；请先检查后再执行账户操作。",
                 state: certificate.permissionsArePrivate ? .ready : .attention
             ))
+        } else if hasInvalidCertificate {
+            items.append(EnvironmentCheckItem(
+                id: "account-certificate",
+                title: "Cloudflare 账户凭据",
+                detail: "已发现无效或不可读取的 cert.pem。重新登录时会先备份它，再由官方 cloudflared 创建新凭据。",
+                state: .attention
+            ))
         } else {
             items.append(EnvironmentCheckItem(
                 id: "account-certificate",
@@ -196,7 +204,41 @@ struct EnvironmentInspector: @unchecked Sendable {
     }
 
     func hasUsableCertificate() -> Bool {
-        firstUsableFile(in: certificateCandidates) != nil
+        firstValidCertificate(in: certificateCandidates) != nil
+    }
+
+    /// Moves an invalid user certificate out of cloudflared's login path so the
+    /// official CLI can create a replacement. Callers must obtain user consent
+    /// before invoking this recovery operation.
+    func backupInvalidUserCertificateIfNeeded() throws -> URL? {
+        let certificateURL = certificateCandidates[0]
+        let symbolicLinkDestination = try? fileManager.destinationOfSymbolicLink(
+            atPath: certificateURL.path
+        )
+        let attributes = try? fileManager.attributesOfItem(atPath: certificateURL.path)
+        let fileType = attributes?[.type] as? FileAttributeType
+        guard symbolicLinkDestination != nil || fileType != nil else {
+            return nil
+        }
+        guard certificateSnapshot(at: certificateURL) == nil else { return nil }
+        guard symbolicLinkDestination != nil || fileType == .typeRegular else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        let stamp = formatter.string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let parent = certificateURL.deletingLastPathComponent()
+        var backupURL = parent.appendingPathComponent("cert.pem.invalid.\(stamp).bak")
+        if itemExists(at: backupURL) {
+            backupURL = parent.appendingPathComponent(
+                "cert.pem.invalid.\(stamp).\(UUID().uuidString.prefix(8)).bak"
+            )
+        }
+
+        try fileManager.moveItem(at: certificateURL, to: backupURL)
+        return backupURL
     }
 
     private var certificateCandidates: [URL] {
@@ -265,6 +307,63 @@ struct EnvironmentInspector: @unchecked Sendable {
 
     private func firstUsableFile(in urls: [URL]) -> FileSnapshot? {
         urls.lazy.compactMap(fileSnapshot(at:)).first(where: \.isUsable)
+    }
+
+    private func firstValidCertificate(in urls: [URL]) -> FileSnapshot? {
+        for url in urls {
+            let resolvedURL = url.resolvingSymlinksInPath()
+            guard let attributes = try? fileManager.attributesOfItem(atPath: resolvedURL.path),
+                  attributes[.type] as? FileAttributeType == .typeRegular else {
+                continue
+            }
+            // cloudflared selects the first existing certificate candidate, so
+            // an invalid earlier file must not be masked by a valid later one.
+            return certificateSnapshot(at: url)
+        }
+        return nil
+    }
+
+    private func certificateSnapshot(at url: URL) -> FileSnapshot? {
+        let resolvedURL = url.resolvingSymlinksInPath()
+        guard let snapshot = fileSnapshot(at: resolvedURL),
+              snapshot.isUsable,
+              snapshot.byteCount <= 1_048_576,
+              let data = try? Data(contentsOf: resolvedURL, options: .mappedIfSafe),
+              Self.isValidOriginCertificate(data) else {
+            return nil
+        }
+        return snapshot
+    }
+
+    private static func isValidOriginCertificate(_ data: Data) -> Bool {
+        guard let contents = String(data: data, encoding: .utf8) else { return false }
+        let beginMarker = "-----BEGIN ARGO TUNNEL TOKEN-----"
+        let endMarker = "-----END ARGO TUNNEL TOKEN-----"
+        guard let beginRange = contents.range(of: beginMarker),
+              let endRange = contents.range(
+                of: endMarker,
+                range: beginRange.upperBound..<contents.endIndex
+              ),
+              contents.range(of: beginMarker, range: endRange.upperBound..<contents.endIndex) == nil else {
+            return false
+        }
+
+        let encoded = contents[beginRange.upperBound..<endRange.lowerBound]
+            .filter { !$0.isWhitespace }
+        guard !encoded.isEmpty,
+              let payload = Data(base64Encoded: String(encoded)),
+              let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+              let zoneID = object["zoneID"] as? String,
+              let apiToken = object["apiToken"] as? String else {
+            return false
+        }
+        return !zoneID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !apiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func itemExists(at url: URL) -> Bool {
+        (try? fileManager.destinationOfSymbolicLink(atPath: url.path)) != nil
+            || (try? fileManager.attributesOfItem(atPath: url.path)) != nil
     }
 
     private func fileSnapshot(at url: URL) -> FileSnapshot? {

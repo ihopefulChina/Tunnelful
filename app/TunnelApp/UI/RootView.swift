@@ -27,8 +27,24 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .tunnels: return "官方 CLI 返回的命名 Tunnel"
         case .publish: return "准备 Ingress，确认后配置 DNS"
         case .configuration: return "编辑 hostname、path 与 service"
-        case .environment: return "只检查必要条件，不读取凭据"
+        case .environment: return "Tunnel 凭据只查元数据，证书仅本机校验"
         case .logs: return "已脱敏的进程输出"
+        }
+    }
+}
+
+private enum SidebarGroup: String, CaseIterable, Identifiable {
+    case status = "状态"
+    case configuration = "配置"
+    case diagnostics = "诊断"
+
+    var id: Self { self }
+
+    var sections: [AppSection] {
+        switch self {
+        case .status: return [.overview, .tunnels]
+        case .configuration: return [.publish, .configuration]
+        case .diagnostics: return [.environment, .logs]
         }
     }
 }
@@ -41,23 +57,21 @@ struct RootView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
-                // Keep an untitled section so the first item sits below the
-                // title bar instead of crowding the traffic lights.
-                Section {
-                    ForEach(AppSection.allCases) { section in
-                        Label(section.rawValue, systemImage: section.symbol)
-                            .tag(section)
-                            .help(section.subtitle)
-                            .accessibilityLabel(section.rawValue)
-                            .accessibilityHint(section.subtitle)
+                ForEach(SidebarGroup.allCases) { group in
+                    Section(group.rawValue) {
+                        ForEach(group.sections) { section in
+                            Label(section.rawValue, systemImage: section.symbol)
+                                .tag(section)
+                                .help(section.subtitle)
+                                .accessibilityLabel(section.rawValue)
+                                .accessibilityHint(section.subtitle)
+                        }
                     }
                 }
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
             .background(AppPalette.chrome)
-            .scrollIndicators(.never)
-            .hideLegacyScrollers()
             .navigationSplitViewColumnWidth(min: 188, ideal: 216, max: 260)
         } detail: {
             NavigationStack {
@@ -67,6 +81,7 @@ struct RootView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .configureMainWindowAppearance()
         .preferredColorScheme(model.appearance.colorScheme)
         .onChange(of: model.requestedSection) { _, section in
             consumeRequestedSection(section)
@@ -81,14 +96,7 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .tunnelfulOpenMainWindow)) { _ in
             model.openMainWindow(openWindow: openWindow)
         }
-        .alert("需要处理", isPresented: Binding(
-            get: { model.alertMessage != nil },
-            set: { if !$0 { model.alertMessage = nil } }
-        )) {
-            Button("好", role: .cancel) { model.alertMessage = nil }
-        } message: {
-            Text(model.alertMessage ?? "")
-        }
+        .presentModelAlerts(from: model)
     }
 
     @ViewBuilder
