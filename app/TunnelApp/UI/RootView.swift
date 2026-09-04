@@ -81,7 +81,6 @@ struct RootView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .appWindowFill()
         .preferredColorScheme(model.appearance.colorScheme)
         .onChange(of: model.requestedSection) { _, section in
             consumeRequestedSection(section)

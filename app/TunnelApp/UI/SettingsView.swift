@@ -105,7 +105,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .scrollIndicators(.hidden)
-        .appWindowFill()
         .navigationTitle("设置")
         .padding(12)
         .onAppear { model.refreshLaunchAtLoginState() }

@@ -69,7 +69,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func windowDidBecomeKey(_ notification: Notification) {
         guard let window = notification.object as? NSWindow, window.canBecomeKey else { return }
-        TunnelfulWindowChrome.sync(window)
         ApplicationActivation.showSystemMenu()
     }
 

@@ -41,21 +41,8 @@ enum AppMotion {
 }
 
 enum AppPalette {
-    /// Light: window-like wash, not Preview's under-page desk gray.
-    /// Dark: slightly below the lifted panels so groups still separate.
-    static let workspaceNSColor = nsColor(
-        name: "TunnelfulWorkspaceBackground",
-        light: NSColor(calibratedWhite: 0.96, alpha: 1),
-        dark: NSColor(calibratedWhite: 0.12, alpha: 1)
-    )
-
-    static let workspace = Color(nsColor: workspaceNSColor)
-
-    static let panel = dynamicColor(
-        name: "TunnelfulPanelBackground",
-        light: NSColor.white,
-        dark: NSColor(calibratedWhite: 0.18, alpha: 1)
-    )
+    static let workspace = Color(nsColor: .windowBackgroundColor)
+    static let panel = Color(nsColor: .controlBackgroundColor)
 
     static let hairline = Color(nsColor: .separatorColor)
 
@@ -85,19 +72,6 @@ enum AppPalette {
 
     private static func dynamicColor(name: String, light: NSColor, dark: NSColor) -> Color {
         Color(nsColor: nsColor(name: name, light: light, dark: dark))
-    }
-}
-
-enum TunnelfulWindowChrome {
-    static func sync(_ window: NSWindow) {
-        guard window.styleMask.contains(.titled), window.canBecomeKey else { return }
-        window.appearance = NSApplication.shared.appearance
-        window.backgroundColor = AppPalette.workspaceNSColor
-        window.isOpaque = true
-    }
-
-    static func syncOpenWindows() {
-        NSApplication.shared.windows.forEach(sync)
     }
 }
 
@@ -221,23 +195,6 @@ extension View {
 
     func appChromeBackground() -> some View {
         modifier(AppChromeBackground())
-    }
-
-    func appWindowFill() -> some View {
-        modifier(AppWindowFill())
-    }
-}
-
-private struct AppWindowFill: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 15.0, *) {
-            content
-                .containerBackground(AppPalette.workspace, for: .window)
-                .toolbarBackground(AppPalette.workspace, for: .windowToolbar)
-        } else {
-            content
-                .toolbarBackground(AppPalette.workspace, for: .windowToolbar)
-        }
     }
 }
 
