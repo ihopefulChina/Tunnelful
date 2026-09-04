@@ -40,22 +40,28 @@ struct RootView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(AppSection.allCases, selection: $selection) { section in
-                Label(section.rawValue, systemImage: section.symbol)
-                    .tag(section)
-                    .help(section.subtitle)
-                    .accessibilityLabel(section.rawValue)
-                    .accessibilityHint(section.subtitle)
+            List(selection: $selection) {
+                // Keep an untitled section so the first item sits below the
+                // title bar instead of crowding the traffic lights.
+                Section {
+                    ForEach(AppSection.allCases) { section in
+                        Label(section.rawValue, systemImage: section.symbol)
+                            .tag(section)
+                            .help(section.subtitle)
+                            .accessibilityLabel(section.rawValue)
+                            .accessibilityHint(section.subtitle)
+                    }
+                }
             }
             .listStyle(.sidebar)
             .scrollIndicators(.never)
             .hideLegacyScrollers()
-            .tint(.accentColor)
             .navigationSplitViewColumnWidth(min: 188, ideal: 216, max: 260)
         } detail: {
             NavigationStack {
                 detailView
                     .navigationTitle((selection ?? .overview).rawValue)
+                    .toolbarTitleDisplayMode(.inline)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
