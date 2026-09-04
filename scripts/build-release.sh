@@ -93,6 +93,8 @@ if [[ "$output_dir" != /* ]]; then
   output_dir="$project_root/$output_dir"
 fi
 mkdir -p "$output_dir"
+# 本地没有更新签名密钥并跳过 appcast 时，不得让新安装包旁边残留旧更新源。
+rm -f "$output_dir/appcast.xml"
 
 work_dir="$(mktemp -d -t tunnelful-release)"
 lsregister_bin='/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
