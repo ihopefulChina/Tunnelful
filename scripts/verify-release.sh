@@ -62,8 +62,25 @@ for command_name in codesign file grep hdiutil lipo plutil shasum otool; do
   fi
 done
 
+native_macos_architecture() {
+  if [[ "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" == "1" ]]; then
+    printf '%s\n' 'arm64'
+  else
+    uname -m
+  fi
+}
+
+lsregister_bin='/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
+unregister_bundle() {
+  local bundle="$1"
+  if [[ -x "$lsregister_bin" && -e "$bundle" ]]; then
+    "$lsregister_bin" -u "$bundle" >/dev/null 2>&1 || true
+  fi
+}
+
 mount_dir="$(mktemp -d -t tunnelful-verify)"
 device=''
+app_path=''
 sparkle_key_file=''
 launch_err=''
 launch_out=''
@@ -73,6 +90,9 @@ cleanup() {
   if [[ -n "${launch_pid:-}" ]]; then
     kill "$launch_pid" 2>/dev/null || true
     wait "$launch_pid" 2>/dev/null || true
+  fi
+  if [[ -n "${app_path:-}" && -d "$app_path" ]]; then
+    unregister_bundle "$app_path"
   fi
   if [[ -n "$device" ]]; then
     hdiutil detach "$device" -quiet || true
@@ -240,24 +260,29 @@ if ! grep -q 'com.apple.security.cs.disable-library-validation' <<< "$entitlemen
   exit 1
 fi
 
-launch_out="$(mktemp -t tunnelful-verify-out)"
-launch_err="$(mktemp -t tunnelful-verify-err)"
-verify_home="$(mktemp -d -t tunnelful-verify-home)"
-HOME="$verify_home" "$binary" >"$launch_out" 2>"$launch_err" &
-launch_pid=$!
-sleep 2
-if ! kill -0 "$launch_pid" 2>/dev/null; then
+native_architecture="$(native_macos_architecture)"
+if [[ "$native_architecture" != "$expected_architecture" ]]; then
+  echo "跳过启动检查：此 Mac 原生架构为 ${native_architecture}，不会启动 ${expected_architecture} 进程，以免触发 Rosetta 或 Intel 即将停用通知。"
+else
+  launch_out="$(mktemp -t tunnelful-verify-out)"
+  launch_err="$(mktemp -t tunnelful-verify-err)"
+  verify_home="$(mktemp -d -t tunnelful-verify-home)"
+  HOME="$verify_home" "$binary" >"$launch_out" 2>"$launch_err" &
+  launch_pid=$!
+  sleep 2
+  if ! kill -0 "$launch_pid" 2>/dev/null; then
+    wait "$launch_pid" 2>/dev/null || true
+    launch_pid=''
+    echo '应用启动失败。' >&2
+    if [[ -s "$launch_err" ]]; then
+      cat "$launch_err" >&2
+    fi
+    exit 1
+  fi
+  kill "$launch_pid" 2>/dev/null || true
   wait "$launch_pid" 2>/dev/null || true
   launch_pid=''
-  echo '应用启动失败。' >&2
-  if [[ -s "$launch_err" ]]; then
-    cat "$launch_err" >&2
-  fi
-  exit 1
 fi
-kill "$launch_pid" 2>/dev/null || true
-wait "$launch_pid" 2>/dev/null || true
-launch_pid=''
 
 if find "$app_path" -type f -name cloudflared -print -quit | grep -q .; then
   echo '发布包不应捆绑 cloudflared。' >&2

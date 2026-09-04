@@ -4,7 +4,7 @@ import DownloadChooser from './DownloadChooser';
 import ThemeToggle from './ThemeToggle';
 
 const repositoryURL = 'https://github.com/ihopefulChina/Tunnelful';
-const releasesURL = `${repositoryURL}/releases/tag/v0.1.5`;
+const releasesURL = `${repositoryURL}/releases/tag/v0.1.6`;
 
 const basePath = process.env.TUNNELFUL_PAGES === '1' ? '/Tunnelful' : '';
 
@@ -157,7 +157,7 @@ export default function Home() {
         />
         <h2 id="download-title">让 Tunnel 回到 Mac 的使用方式。</h2>
         <p>免费、开源。分别为 Apple 芯片与 Intel Mac 提供原生安装包。</p>
-        <a className="button button-primary" href="#downloads">选择 Tunnelful 0.1.5</a>
+        <a className="button button-primary" href="#downloads">选择 Tunnelful 0.1.6</a>
         <a className="release-link" href={releasesURL}>查看发布说明</a>
       </section>
 

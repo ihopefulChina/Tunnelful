@@ -135,9 +135,9 @@ enum TunnelTransportProtocol: String, CaseIterable, Identifiable, Sendable {
         case .auto:
             return "先尝试 QUIC。若 UDP 被拦截，cloudflared 会自行回退到 HTTP/2，但可能要等一两分钟。"
         case .http2:
-            return "跳过 QUIC，直接走 TCP。适合公司网、防火墙或运营商拦截 UDP 7844 的环境。"
+            return "跳过 QUIC，直接走 TCP。适合公司网、防火墙或运营商拦截 UDP 7844 的环境。若命令行能连而这里不能，多半是 TCP 7844 被拦，请改回自动或 QUIC。"
         case .quic:
-            return "只用 QUIC。UDP 被拦截时不会回退到 HTTP/2。"
+            return "只用 QUIC。适合拦截 TCP 7844、但 UDP 7844 仍可用的网络；UDP 被拦截时不会回退到 HTTP/2。"
         }
     }
 }

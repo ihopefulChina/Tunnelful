@@ -31,40 +31,7 @@ struct LogsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            PageHeader(
-                title: "日志",
-                subtitle: "实时显示本 App 启动的进程输出，并自动遮罩常见凭据。"
-            )
-
-            HStack(spacing: 12) {
-                Picker("来源", selection: $stream) {
-                    ForEach(StreamFilter.allCases) { filter in
-                        Text(filter.rawValue).tag(filter)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: 260)
-
-                TextField("搜索日志", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-
-                Button {
-                    copyLogs()
-                } label: {
-                    Label("复制", systemImage: "doc.on.doc")
-                }
-                .disabled(filteredLogs.isEmpty)
-
-                Button(role: .destructive) {
-                    process.clearLogs()
-                } label: {
-                    Label("清空", systemImage: "trash")
-                }
-                .disabled(process.logs.isEmpty)
-            }
-
+        Group {
             if filteredLogs.isEmpty {
                 ContentUnavailableView {
                     Label(searchText.isEmpty ? "暂无日志" : "没有匹配的日志", systemImage: "doc.text")
@@ -95,13 +62,40 @@ struct LogsView: View {
                     }
                 }
                 .tableStyle(.inset(alternatesRowBackgrounds: true))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
         }
-        .padding(.horizontal, 36)
-        .padding(.top, 34)
-        .padding(.bottom, 30)
-        .background(AppPalette.workspaceBackground)
+        .appPageBackground()
+        .searchable(text: $searchText, prompt: "搜索日志")
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Picker("来源", selection: $stream) {
+                    ForEach(StreamFilter.allCases) { filter in
+                        Text(filter.rawValue).tag(filter)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 240)
+                .help("按来源筛选日志")
+            }
+
+            ToolbarItem {
+                Button {
+                    copyLogs()
+                } label: {
+                    Label("复制", systemImage: "doc.on.doc")
+                }
+                .disabled(filteredLogs.isEmpty)
+            }
+
+            ToolbarItem {
+                Button(role: .destructive) {
+                    process.clearLogs()
+                } label: {
+                    Label("清空", systemImage: "trash")
+                }
+                .disabled(process.logs.isEmpty)
+            }
+        }
     }
 
     private func copyLogs() {

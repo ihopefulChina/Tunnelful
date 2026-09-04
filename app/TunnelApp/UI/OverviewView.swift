@@ -3,6 +3,7 @@ import SwiftUI
 struct OverviewView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var process: TunnelProcessController
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var runnableTunnel: String? {
         model.preferredTunnelName
@@ -15,38 +16,11 @@ struct OverviewView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
-                PageHeader(
-                    title: "Tunnel 状态，一目了然。",
-                    subtitle: "分别查看本地进程、Cloudflare Edge 与源站状态。"
-                )
-
-                HStack(alignment: .top, spacing: 14) {
-                    StatusTile(
-                        title: "本地进程",
-                        value: process.processState.label,
-                        detail: processDetail,
-                        symbol: processSymbol,
-                        tint: processTint
-                    )
-                    StatusTile(
-                        title: "Cloudflare Edge",
-                        value: process.edgeState.rawValue,
-                        detail: edgeDetail,
-                        symbol: edgeSymbol,
-                        tint: edgeTint
-                    )
-                    StatusTile(
-                        title: "本地源站",
-                        value: model.originState.label,
-                        detail: "独立探测，避免 Tunnel 已连接却掩盖源站故障。",
-                        symbol: originSymbol,
-                        tint: originTint
-                    )
-                }
+            VStack(alignment: .leading, spacing: AppMetrics.sectionSpacing) {
+                statusBoard
 
                 if let diagnostic = process.edgeDiagnostic {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: AppMetrics.controlSpacing) {
                         NoticeView(
                             kind: process.edgeState == .unreachable ? .warning : .info,
                             title: process.edgeState == .unreachable
@@ -54,9 +28,14 @@ struct OverviewView: View {
                                 : "正在连接 Cloudflare Edge",
                             message: diagnostic
                         )
-                        if process.suggestsHTTP2Protocol, model.transportProtocol == .auto {
+                        if process.suggestsHTTP2Protocol, model.transportProtocol != .http2 {
                             Button("跳过 QUIC，使用 HTTP/2 重试") {
                                 model.retryTunnelUsingHTTP2()
+                            }
+                        }
+                        if process.suggestsQUICProtocol, model.transportProtocol != .quic {
+                            Button("改用 QUIC 重试") {
+                                model.retryTunnelUsingQUIC()
                             }
                         }
                     }
@@ -83,14 +62,14 @@ struct OverviewView: View {
                     )
                 }
             }
-            .padding(.horizontal, 36)
-            .padding(.top, 34)
-            .padding(.bottom, 30)
-            .frame(maxWidth: 1_180, alignment: .leading)
+            .padding(.horizontal, AppMetrics.pagePadding)
+            .padding(.top, AppMetrics.pageTopPadding)
+            .padding(.bottom, AppMetrics.pageBottomPadding)
+            .frame(maxWidth: 1_080, alignment: .leading)
         }
-        .background(AppPalette.workspaceBackground)
+        .appPageBackground()
         .toolbar {
-            ToolbarItem {
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     Task { await model.bootstrap() }
                 } label: {
@@ -106,12 +85,51 @@ struct OverviewView: View {
                 .accessibilityValue(model.isRefreshing ? "正在刷新" : "")
             }
         }
+        .animation(AppMotion.content(reduceMotion), value: process.processState)
+        .animation(AppMotion.content(reduceMotion), value: process.edgeState)
+        .animation(AppMotion.content(reduceMotion), value: model.originState)
+    }
+
+    private var statusBoard: some View {
+        StatusBoard {
+            StatusMetric(
+                title: "本地进程",
+                value: process.processState.label,
+                detail: processDetail,
+                symbol: processSymbol,
+                tint: processTint,
+                isTransient: {
+                    if case .starting = process.processState { return true }
+                    return false
+                }()
+            )
+            Divider()
+            StatusMetric(
+                title: "Cloudflare Edge",
+                value: process.edgeState.rawValue,
+                detail: edgeDetail,
+                symbol: edgeSymbol,
+                tint: edgeTint,
+                isTransient: process.edgeState == .connecting || process.edgeState == .degraded
+            )
+            Divider()
+            StatusMetric(
+                title: "本地源站",
+                value: model.originState.label,
+                detail: "独立探测，避免 Tunnel 已连接却掩盖源站故障。",
+                symbol: originSymbol,
+                tint: originTint,
+                isTransient: {
+                    if case .checking = model.originState { return true }
+                    return false
+                }()
+            )
+        }
     }
 
     private var managedTunnelSection: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("本 App 管理的 Tunnel")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: "本 App 管理的 Tunnel")
 
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -122,7 +140,7 @@ struct OverviewView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Spacer()
+                Spacer(minLength: 12)
 
                 if case .running = process.processState {
                     Button {
@@ -141,45 +159,50 @@ struct OverviewView: View {
                     } label: {
                         Label("启动 Tunnel", systemImage: "play.fill")
                     }
+                    .buttonStyle(.borderedProminent)
                     .disabled(runnableTunnel == nil || model.installation == nil)
                 }
             }
             .padding(.horizontal, 14)
-            .frame(minHeight: 72)
-            .background(AppPalette.panelBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.vertical, 12)
+            .frame(minHeight: 64)
+            .appSurface(padding: 0)
         }
     }
 
     private var environmentSection: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("运行环境")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: "运行环境")
 
             VStack(spacing: 0) {
                 if let installation = model.installation {
                     KeyValueRow(key: "可执行文件", value: installation.executableURL.path)
-                        .padding(.vertical, 10)
-                    Divider()
+                        .padding(.vertical, 9)
+                    Divider().padding(.leading, 100)
                     KeyValueRow(key: "版本", value: installation.version)
-                        .padding(.vertical, 10)
-                    Divider()
+                        .padding(.vertical, 9)
+                    Divider().padding(.leading, 100)
                     KeyValueRow(key: "安装来源", value: installation.source.rawValue)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 9)
+                    Divider().padding(.leading, 100)
+                    KeyValueRow(key: "传输协议", value: model.transportProtocol.title)
+                        .padding(.vertical, 9)
                 } else {
                     Text("未找到 cloudflared。")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 9)
                 }
-                Divider()
+                Divider().padding(.leading, 100)
                 KeyValueRow(
                     key: "配置文件",
                     value: model.selectedConfigURL?.path ?? "尚未导入"
                 )
-                .padding(.vertical, 10)
+                .padding(.vertical, 9)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 4)
-            .background(AppPalette.panelBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .appSurface(padding: 0)
         }
     }
 
@@ -193,12 +216,14 @@ struct OverviewView: View {
     private var processSymbol: String {
         if case .running = process.processState { return "play.circle.fill" }
         if case .failed = process.processState { return "xmark.octagon.fill" }
+        if case .starting = process.processState { return "arrow.clockwise.circle" }
         return "stop.circle"
     }
 
     private var processTint: Color {
         if case .running = process.processState { return AppPalette.statusGreen }
         if case .failed = process.processState { return .red }
+        if case .starting = process.processState { return .accentColor }
         return .secondary
     }
 

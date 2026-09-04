@@ -4,12 +4,7 @@ struct TunnelsView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            PageHeader(
-                title: "Tunnel",
-                subtitle: "查看官方 cloudflared CLI 返回的命名 Tunnel。"
-            )
-
+        Group {
             if model.tunnels.isEmpty {
                 ContentUnavailableView {
                     Label(emptyTitle, systemImage: emptySymbol)
@@ -33,9 +28,11 @@ struct TunnelsView: View {
                                 .foregroundStyle(.tertiary)
                                 .textSelection(.enabled)
                         }
+                        .padding(.vertical, 4)
                     }
                     TableColumn("连接数") { tunnel in
                         Text(tunnel.connectionCount.formatted())
+                            .monospacedDigit()
                     }
                     .width(min: 80, ideal: 100)
                     TableColumn("创建时间") { tunnel in
@@ -52,15 +49,12 @@ struct TunnelsView: View {
                     }
                     .width(min: 90, ideal: 110)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .tableStyle(.inset(alternatesRowBackgrounds: true))
             }
         }
-        .padding(.horizontal, 36)
-        .padding(.top, 34)
-        .padding(.bottom, 30)
-        .background(AppPalette.workspaceBackground)
+        .appPageBackground()
         .toolbar {
-            ToolbarItem {
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     Task { await model.refreshTunnels() }
                 } label: {
@@ -106,5 +100,4 @@ struct TunnelsView: View {
         case .notChecked, .loaded: return "point.3.connected.trianglepath.dotted"
         }
     }
-
 }

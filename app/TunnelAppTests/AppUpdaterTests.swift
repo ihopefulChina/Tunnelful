@@ -36,9 +36,10 @@ final class AppUpdaterTests: XCTestCase {
     }
 
     func testMarketingVersionsCompareByNumericComponents() {
+        XCTAssertTrue(AppUpdateVersion.isNewer("0.1.6", than: "0.1.5"))
         XCTAssertTrue(AppUpdateVersion.isNewer("0.1.5", than: "0.1.2"))
         XCTAssertFalse(AppUpdateVersion.isNewer("0.1.2", than: "0.1.4"))
-        XCTAssertFalse(AppUpdateVersion.isNewer("0.1.5", than: "0.1.5"))
+        XCTAssertFalse(AppUpdateVersion.isNewer("0.1.6", than: "0.1.6"))
     }
 }
 

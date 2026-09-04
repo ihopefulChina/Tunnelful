@@ -204,4 +204,18 @@ final class ProcessControllerTests: XCTestCase {
             $0.stream == .standardError && $0.message == "stderr-without-newline"
         })
     }
+
+    func testStartLogMentionsForcedHTTP2Protocol() throws {
+        let controller = TunnelProcessController()
+        try controller.start(
+            executableURL: URL(fileURLWithPath: "/usr/bin/true"),
+            arguments: ["--protocol", "http2"]
+        )
+        XCTAssertTrue(controller.logs.contains {
+            $0.stream == .app && $0.message.contains("HTTP/2（TCP 7844）")
+        })
+        let stopped = expectation(description: "cleanup")
+        controller.shutdown { stopped.fulfill() }
+        wait(for: [stopped], timeout: 6)
+    }
 }

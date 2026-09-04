@@ -11,6 +11,7 @@ struct EdgeLogInterpreter: Equatable, Sendable {
     private var http2EstablishFailed = false
     private var precheckHardFail = false
     private var switchedToHTTP2 = false
+    private var forcedHTTP2 = false
     private(set) var diagnostic: String?
 
     mutating func reset() {
@@ -20,11 +21,22 @@ struct EdgeLogInterpreter: Equatable, Sendable {
         http2EstablishFailed = false
         precheckHardFail = false
         switchedToHTTP2 = false
+        forcedHTTP2 = false
         diagnostic = nil
+    }
+
+    /// `--protocol http2` (or config) skips QUIC; HTTP/2 handshake failure is then fatal.
+    mutating func noteForcedHTTP2(_ forced: Bool) {
+        forcedHTTP2 = forced
     }
 
     var suggestsHTTP2Protocol: Bool {
         quicDialFailed && !sawRegistration
+    }
+
+    /// TCP 7844 / HTTP/2 failed, but QUIC was never tried or never failed.
+    var suggestsQUICProtocol: Bool {
+        http2EstablishFailed && !quicDialFailed && !sawRegistration
     }
 
     mutating func consume(_ line: String) -> EdgeConnectionState {
@@ -33,6 +45,9 @@ struct EdgeLogInterpreter: Equatable, Sendable {
 
         if Self.isPrecheckHardFail(normalized) {
             precheckHardFail = true
+        }
+        if Self.isInitialProtocolHTTP2(normalized) {
+            forcedHTTP2 = true
         }
         if Self.isQUICDialFailure(normalized) {
             quicDialFailed = true
@@ -62,7 +77,8 @@ struct EdgeLogInterpreter: Equatable, Sendable {
             quicDialFailed: quicDialFailed,
             http2EstablishFailed: http2EstablishFailed,
             precheckHardFail: precheckHardFail,
-            switchedToHTTP2: switchedToHTTP2
+            switchedToHTTP2: switchedToHTTP2,
+            forcedHTTP2: forcedHTTP2
         )
         return state
     }
@@ -74,7 +90,12 @@ struct EdgeLogInterpreter: Equatable, Sendable {
         if sawRegistration {
             return .degraded
         }
-        if precheckHardFail || http2EstablishFailed {
+        if precheckHardFail {
+            return .unreachable
+        }
+        // HTTP/2 TLS 失败只有在确实走了 HTTP/2（强制、回退，或 QUIC 已失败）时
+        // 才表示隧道连不上。预检对 TCP 7844 的探测失败不应把仍在用 QUIC 的隧道标红。
+        if http2EstablishFailed && (forcedHTTP2 || switchedToHTTP2 || quicDialFailed) {
             return .unreachable
         }
         return .connecting
@@ -125,6 +146,14 @@ struct EdgeLogInterpreter: Equatable, Sendable {
             || line.contains("tls handshake with edge error")
     }
 
+    private static func isInitialProtocolHTTP2(_ line: String) -> Bool {
+        line.contains("initial protocol http2")
+            || line.range(
+                of: #"initial protocol["\s:=]+http2"#,
+                options: .regularExpression
+            ) != nil
+    }
+
     private static func isPrecheckHardFail(_ line: String) -> Bool {
         guard line.contains("precheck complete") else { return false }
         return line.range(
@@ -138,7 +167,8 @@ struct EdgeLogInterpreter: Equatable, Sendable {
         quicDialFailed: Bool,
         http2EstablishFailed: Bool,
         precheckHardFail: Bool,
-        switchedToHTTP2: Bool
+        switchedToHTTP2: Bool,
+        forcedHTTP2: Bool
     ) -> String? {
         switch state {
         case .connected, .unknown:
@@ -150,7 +180,7 @@ struct EdgeLogInterpreter: Equatable, Sendable {
                 return "cloudflared 连不上 Cloudflare Edge：QUIC（UDP 7844）超时，HTTP/2 的 TLS 握手也被关闭。进程还在重试，但现在不能转发流量。请检查防火墙、公司网或 VPN 是否放行 Cloudflare 的 7844 端口。"
             }
             if http2EstablishFailed {
-                return "HTTP/2 到 Cloudflare Edge 的 TLS 握手失败。请检查本机代理、VPN 或防火墙是否干扰了 TCP 7844。"
+                return "HTTP/2（TCP 7844）到 Cloudflare Edge 的 TLS 握手失败。当前网络拦截了 TCP 7844，但 QUIC（UDP 7844）往往仍可用。命令行默认走 QUIC，所以能连上。请改用 QUIC 后重试。"
             }
             if precheckHardFail {
                 return "cloudflared 启动预检失败：到 Cloudflare Edge 的 QUIC 与 HTTP/2 均不可用。请放行 7844 的 UDP/TCP，或关掉会拦截该端口的代理后再启动。"
@@ -162,6 +192,9 @@ struct EdgeLogInterpreter: Equatable, Sendable {
             }
             if quicDialFailed {
                 return "QUIC（UDP 7844）连接超时，cloudflared 仍在重试，稍后可能回退到 HTTP/2。也可在设置里改用 HTTP/2 立即重试。"
+            }
+            if http2EstablishFailed && !forcedHTTP2 {
+                return "预检显示 HTTP/2（TCP 7844）不可用，cloudflared 仍在用 QUIC 连接。这与命令行的 degraded transport 一致，不算隧道断开。"
             }
             return nil
         }
@@ -188,6 +221,7 @@ final class TunnelProcessController: ObservableObject {
     @Published private(set) var edgeState: EdgeConnectionState = .unknown
     @Published private(set) var edgeDiagnostic: String?
     @Published private(set) var suggestsHTTP2Protocol = false
+    @Published private(set) var suggestsQUICProtocol = false
     @Published private(set) var logs: [LogEntry] = []
     private var edgeInterpreter = EdgeLogInterpreter()
 
@@ -240,7 +274,8 @@ final class TunnelProcessController: ObservableObject {
 
         processState = .starting
         resetEdgeObservation(to: .connecting)
-        appendAppLog("正在启动托管隧道。")
+        edgeInterpreter.noteForcedHTTP2(Self.argumentsForceHTTP2(arguments))
+        appendAppLog(Self.launchDescription(for: arguments))
 
         newProcess.terminationHandler = { [weak self, weak newProcess] terminated in
             let terminationStatus = terminated.terminationStatus
@@ -397,12 +432,36 @@ final class TunnelProcessController: ObservableObject {
         edgeState = state
         edgeDiagnostic = nil
         suggestsHTTP2Protocol = false
+        suggestsQUICProtocol = false
     }
 
     private func applyEdgeInterpretation(_ state: EdgeConnectionState) {
         edgeState = state
         edgeDiagnostic = edgeInterpreter.diagnostic
         suggestsHTTP2Protocol = edgeInterpreter.suggestsHTTP2Protocol
+        suggestsQUICProtocol = edgeInterpreter.suggestsQUICProtocol
+    }
+
+    private static func argumentsForceHTTP2(_ arguments: [String]) -> Bool {
+        protocolValue(in: arguments) == "http2"
+    }
+
+    private static func protocolValue(in arguments: [String]) -> String? {
+        guard let flagIndex = arguments.firstIndex(of: "--protocol") else { return nil }
+        let valueIndex = arguments.index(after: flagIndex)
+        guard arguments.indices.contains(valueIndex) else { return nil }
+        return arguments[valueIndex].lowercased()
+    }
+
+    private static func launchDescription(for arguments: [String]) -> String {
+        switch protocolValue(in: arguments) {
+        case "http2":
+            return "正在启动托管隧道，传输协议为 HTTP/2（TCP 7844）。"
+        case "quic":
+            return "正在启动托管隧道，传输协议为 QUIC（UDP 7844）。"
+        default:
+            return "正在启动托管隧道，传输协议为自动（先 QUIC）。"
+        }
     }
 
     private func appendAppLog(_ message: String) {

@@ -20,12 +20,7 @@ private struct EnvironmentContent: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
-                PageHeader(
-                    title: "让这台 Mac 准备就绪。",
-                    subtitle: "只检查必要条件；不会读取、展示或上传凭据内容。"
-                )
-
+            VStack(alignment: .leading, spacing: AppMetrics.sectionSpacing) {
                 summary
                 setupSection
                 checksSection
@@ -35,14 +30,14 @@ private struct EnvironmentContent: View {
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 36)
-            .padding(.top, 34)
-            .padding(.bottom, 30)
-            .frame(maxWidth: 920, alignment: .leading)
+            .padding(.horizontal, AppMetrics.pagePadding)
+            .padding(.top, AppMetrics.pageTopPadding)
+            .padding(.bottom, AppMetrics.pageBottomPadding)
+            .frame(maxWidth: AppMetrics.maxReadableWidth, alignment: .leading)
         }
-        .background(AppPalette.workspaceBackground)
+        .appPageBackground()
         .toolbar {
-            ToolbarItem {
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     Task { await model.bootstrap(reportErrors: true) }
                 } label: {
@@ -92,8 +87,7 @@ private struct EnvironmentContent: View {
 
     private var setupSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("首次设置")
-                .font(.headline)
+            SectionHeader(title: "首次设置")
 
             VStack(spacing: 0) {
                 SetupRow(
@@ -160,15 +154,14 @@ private struct EnvironmentContent: View {
                     .disabled(model.isApplyingConfiguration || model.isRoutingDNS)
                 }
             }
-            .background(AppPalette.panelBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .appSurface(padding: 0)
         }
     }
 
     private var checksSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("检查结果")
-                    .font(.headline)
+                SectionHeader(title: "检查结果")
                 Spacer()
                 Text("\(report.items.filter { $0.state == .ready }.count) / \(report.items.count) 就绪")
                     .font(.caption)
@@ -183,7 +176,7 @@ private struct EnvironmentContent: View {
                     }
                 }
             }
-            .background(AppPalette.panelBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .appSurface(padding: 0)
         }
     }
 

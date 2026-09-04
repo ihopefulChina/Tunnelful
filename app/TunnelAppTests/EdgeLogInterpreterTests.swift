@@ -62,6 +62,7 @@ final class EdgeLogInterpreterTests: XCTestCase {
         XCTAssertEqual(interpreter.consume("starting cloudflared"), .connecting)
         XCTAssertNil(interpreter.diagnostic)
         XCTAssertFalse(interpreter.suggestsHTTP2Protocol)
+        XCTAssertFalse(interpreter.suggestsQUICProtocol)
     }
 
     func testUnregisteredIsNotTreatedAsRegistered() {
@@ -127,6 +128,8 @@ final class EdgeLogInterpreterTests: XCTestCase {
             ),
             .unreachable
         )
+        XCTAssertTrue(interpreter.suggestsHTTP2Protocol)
+        XCTAssertFalse(interpreter.suggestsQUICProtocol)
         XCTAssertTrue(interpreter.diagnostic?.contains("QUIC") == true)
         XCTAssertTrue(interpreter.diagnostic?.contains("HTTP/2") == true)
     }
@@ -166,6 +169,92 @@ final class EdgeLogInterpreterTests: XCTestCase {
         var interpreter = EdgeLogInterpreter()
         _ = interpreter.consume("INF precheck complete hard_fail=true run_id=abc")
         XCTAssertEqual(interpreter.consume("INF Registered tunnel connection connIndex=0 location=sjc"), .connected)
+        XCTAssertNil(interpreter.diagnostic)
+    }
+
+    func testInitialProtocolHTTP2LogAloneMakesHandshakeFatal() {
+        var interpreter = EdgeLogInterpreter()
+        XCTAssertEqual(interpreter.consume("INF Initial protocol http2"), .connecting)
+        XCTAssertEqual(
+            interpreter.consume(
+                #"ERR Unable to establish connection with Cloudflare edge error="TLS handshake with edge error: EOF""#
+            ),
+            .unreachable
+        )
+        XCTAssertTrue(interpreter.suggestsQUICProtocol)
+    }
+
+    func testForcedHTTP2HandshakeFailureSuggestsQUIC() {
+        var interpreter = EdgeLogInterpreter()
+        interpreter.noteForcedHTTP2(true)
+        XCTAssertEqual(
+            interpreter.consume("2026-09-04T02:00:34Z INF Initial protocol http2"),
+            .connecting
+        )
+        XCTAssertEqual(
+            interpreter.consume(
+                #"ERR Unable to establish connection with Cloudflare edge error="TLS handshake with edge error: EOF" connIndex=0 event=0 ip=198.41.200.53"#
+            ),
+            .unreachable
+        )
+        XCTAssertTrue(interpreter.suggestsQUICProtocol)
+        XCTAssertFalse(interpreter.suggestsHTTP2Protocol)
+        XCTAssertTrue(interpreter.diagnostic?.contains("QUIC") == true)
+        XCTAssertTrue(interpreter.diagnostic?.contains("命令行") == true)
+    }
+
+    func testHTTP2HandshakeLogWithoutForcedProtocolDoesNotMarkUnreachable() {
+        var interpreter = EdgeLogInterpreter()
+        XCTAssertEqual(
+            interpreter.consume(
+                #"ERR Unable to establish connection with Cloudflare edge error="TLS handshake with edge error: EOF""#
+            ),
+            .connecting
+        )
+        XCTAssertTrue(interpreter.suggestsQUICProtocol)
+        XCTAssertTrue(interpreter.diagnostic?.contains("仍在用 QUIC") == true)
+        XCTAssertEqual(
+            interpreter.consume("INF Registered tunnel connection connIndex=0 protocol=quic location=hkg10"),
+            .connected
+        )
+        XCTAssertNil(interpreter.diagnostic)
+        XCTAssertFalse(interpreter.suggestsQUICProtocol)
+    }
+
+    func testCLIQUICSuccessWithBlockedHTTP2PrecheckIsConnected() {
+        var interpreter = EdgeLogInterpreter()
+        let lines = [
+            "2026-09-04T02:00:34Z INF Starting tunnel",
+            "2026-09-04T02:00:34Z INF Initial protocol quic",
+            "2026-09-04T02:00:35Z INF Registered tunnel connection connIndex=0 event=0 ip=198.41.200.113 location=hkg10 protocol=quic",
+            "2026-09-04T02:00:35Z INF Registered tunnel connection connIndex=1 event=0 ip=198.41.192.7 location=hkg01 protocol=quic",
+            "2026-09-04T02:00:36Z INF Registered tunnel connection connIndex=2 event=0 ip=198.41.192.77 location=hkg01 protocol=quic",
+            "2026-09-04T02:00:38Z INF Registered tunnel connection connIndex=3 event=0 ip=198.41.200.53 location=hkg10 protocol=quic",
+            "2026-09-04T02:00:44Z INF |  TCP Connectivity  region1.v2.argotunnel.com  FAIL    HTTP/2 connection is blocked or unreachable  |",
+            #"2026-09-04T02:00:44Z INF precheck component="TCP Connectivity" details="HTTP/2 connection is blocked or unreachable" status=fail target=region1.v2.argotunnel.com"#,
+            "2026-09-04T02:00:44Z INF precheck complete hard_fail=false suggested_protocol=quic"
+        ]
+
+        var last: EdgeConnectionState = .unknown
+        for line in lines {
+            last = interpreter.consume(line)
+        }
+        XCTAssertEqual(last, .connected)
+        XCTAssertNil(interpreter.diagnostic)
+        XCTAssertFalse(interpreter.suggestsHTTP2Protocol)
+        XCTAssertFalse(interpreter.suggestsQUICProtocol)
+    }
+
+    func testResetClearsForcedHTTP2AndQUICSuggestion() {
+        var interpreter = EdgeLogInterpreter()
+        interpreter.noteForcedHTTP2(true)
+        _ = interpreter.consume(
+            #"ERR Unable to establish connection with Cloudflare edge error="TLS handshake with edge error: EOF""#
+        )
+        XCTAssertTrue(interpreter.suggestsQUICProtocol)
+        interpreter.reset()
+        XCTAssertEqual(interpreter.consume("starting cloudflared"), .connecting)
+        XCTAssertFalse(interpreter.suggestsQUICProtocol)
         XCTAssertNil(interpreter.diagnostic)
     }
 }

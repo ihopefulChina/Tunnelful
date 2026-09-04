@@ -777,7 +777,15 @@ final class AppModel: ObservableObject {
     }
 
     func retryTunnelUsingHTTP2() {
-        transportProtocol = .http2
+        retryTunnel(using: .http2)
+    }
+
+    func retryTunnelUsingQUIC() {
+        retryTunnel(using: .quic)
+    }
+
+    private func retryTunnel(using transport: TunnelTransportProtocol) {
+        transportProtocol = transport
         guard let name = preferredTunnelName else { return }
         switch processController.processState {
         case .running, .starting:

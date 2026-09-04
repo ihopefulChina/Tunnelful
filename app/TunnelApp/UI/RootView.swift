@@ -20,6 +20,33 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .logs: return "text.alignleft"
         }
     }
+
+    var subtitle: String {
+        switch self {
+        case .overview: return "本地进程、Cloudflare Edge 与源站"
+        case .tunnels: return "官方 CLI 返回的命名 Tunnel"
+        case .publish: return "准备 Ingress，确认后配置 DNS"
+        case .configuration: return "编辑 hostname、path 与 service"
+        case .environment: return "只检查必要条件，不读取凭据"
+        case .logs: return "已脱敏的进程输出"
+        }
+    }
+}
+
+private enum SidebarGroup: String, CaseIterable, Identifiable {
+    case status = "状态"
+    case setup = "配置"
+    case diagnostics = "诊断"
+
+    var id: Self { self }
+
+    var sections: [AppSection] {
+        switch self {
+        case .status: return [.overview, .tunnels]
+        case .setup: return [.publish, .configuration]
+        case .diagnostics: return [.environment, .logs]
+        }
+    }
 }
 
 struct RootView: View {
@@ -29,18 +56,33 @@ struct RootView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(AppSection.allCases, selection: $selection) { section in
-                Label(section.rawValue, systemImage: section.symbol)
-                    .tag(section)
-                    .accessibilityLabel(section.rawValue)
+            List(selection: $selection) {
+                ForEach(SidebarGroup.allCases) { group in
+                    Section(group.rawValue) {
+                        ForEach(group.sections) { section in
+                            Label(section.rawValue, systemImage: section.symbol)
+                                .tag(section)
+                                .help(section.subtitle)
+                                .accessibilityLabel(section.rawValue)
+                                .accessibilityHint(section.subtitle)
+                        }
+                    }
+                }
             }
             .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 188, ideal: 212, max: 244)
+            .navigationSplitViewColumnWidth(min: 188, ideal: 216, max: 260)
         } detail: {
-            detailView
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            NavigationStack {
+                detailView
+                    .navigationTitle((selection ?? .overview).rawValue)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                WindowStatusBar()
+            }
         }
         .navigationSplitViewStyle(.balanced)
+        .preferredColorScheme(model.appearance.colorScheme)
         .onChange(of: model.requestedSection) { _, section in
             consumeRequestedSection(section)
         }
@@ -81,5 +123,4 @@ struct RootView: View {
         selection = section
         model.requestedSection = nil
     }
-
 }

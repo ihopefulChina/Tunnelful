@@ -81,6 +81,15 @@ final class CommandAndParserTests: XCTestCase {
             userDefaults: defaults
         )
         XCTAssertEqual(restoredModel.transportProtocol, .http2)
+
+        firstModel.retryTunnelUsingQUIC()
+        XCTAssertEqual(firstModel.transportProtocol, .quic)
+
+        let restoredAfterQUIC = AppModel(
+            processController: TunnelProcessController(),
+            userDefaults: defaults
+        )
+        XCTAssertEqual(restoredAfterQUIC.transportProtocol, .quic)
     }
 
     func testRunArgumentsOmitProtocolWhenAutoAndInsertFlagOtherwise() {

@@ -189,7 +189,7 @@ struct TunnelAppMain: App {
                 .task { await model.bootstrap() }
         }
         .defaultSize(width: 1_120, height: 780)
-        .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unified)
         .commands {
             TunnelfulCommands(model: model, updater: updater)
         }

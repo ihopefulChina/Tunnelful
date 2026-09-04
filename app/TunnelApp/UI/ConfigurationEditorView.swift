@@ -11,12 +11,7 @@ struct ConfigurationEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    PageHeader(
-                        title: "Ingress 配置",
-                        subtitle: "结构化管理 hostname、path 与 service，保存前会运行 cloudflared 官方校验。"
-                    )
-
+                VStack(alignment: .leading, spacing: AppMetrics.sectionSpacing) {
                     if let document = draftDocument {
                         configurationSummary(document)
                         rulesSection(document)
@@ -26,18 +21,18 @@ struct ConfigurationEditorView: View {
                         emptyState
                     }
                 }
-                .frame(maxWidth: 1080, alignment: .leading)
-                .padding(.horizontal, 32)
-                .padding(.vertical, 28)
+                .frame(maxWidth: 1_080, alignment: .leading)
+                .padding(.horizontal, AppMetrics.pagePadding)
+                .padding(.top, AppMetrics.pageTopPadding)
+                .padding(.bottom, AppMetrics.pageBottomPadding)
                 .frame(maxWidth: .infinity, alignment: .top)
             }
 
             if draftDocument != nil {
-                Divider()
                 saveBar
             }
         }
-        .background(AppPalette.workspaceBackground)
+        .appPageBackground()
         .onAppear {
             if model.configurationDraft == nil {
                 synchronizeDraft(with: model.configDocument)
@@ -77,8 +72,7 @@ struct ConfigurationEditorView: View {
     private func rulesSection(_ document: CloudflaredConfigDocument) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("结构化规则")
-                    .font(.title2.weight(.semibold))
+                SectionHeader(title: "结构化规则")
                 Text("\(document.ingress.count) 条")
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(.secondary)
@@ -211,11 +205,10 @@ struct ConfigurationEditorView: View {
                     .foregroundStyle(AppPalette.statusOrange)
             }
         }
-        .padding(16)
-        .background(AppPalette.panelBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .appSurface(padding: 16)
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(.primary.opacity(issues.isEmpty ? 0.05 : 0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppMetrics.cornerRadius, style: .continuous)
+                .strokeBorder(issues.isEmpty ? Color.clear : AppPalette.statusOrange.opacity(0.45), lineWidth: 1)
         }
     }
 
@@ -240,8 +233,7 @@ struct ConfigurationEditorView: View {
     private func yamlSection(_ document: CloudflaredConfigDocument) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("YAML 预览")
-                    .font(.title2.weight(.semibold))
+                SectionHeader(title: "YAML 预览")
                 Spacer()
             }
 
@@ -254,11 +246,7 @@ struct ConfigurationEditorView: View {
                     .padding(16)
             }
             .frame(minHeight: 170, maxHeight: 260)
-            .background(AppPalette.panelBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(.primary.opacity(0.05), lineWidth: 1)
-            }
+            .background(AppPalette.panel, in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadius, style: .continuous))
             .accessibilityLabel("YAML 预览")
         }
     }
@@ -330,9 +318,9 @@ struct ConfigurationEditorView: View {
             .accessibilityLabel("保存并使用官方 cloudflared 校验")
             .accessibilityValue(model.isApplyingConfiguration ? "正在保存" : "")
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 11)
-        .background(.regularMaterial)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .appChromeBackground()
     }
 
     private var validationIssues: [ConfigValidationIssue] {
@@ -529,11 +517,6 @@ struct ConfigurationEditorView: View {
 
     private func panel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
-            .padding(16)
-            .background(AppPalette.panelBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(.primary.opacity(0.05), lineWidth: 1)
-            }
+            .appSurface(padding: 16)
     }
 }

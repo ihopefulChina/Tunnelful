@@ -82,8 +82,14 @@ fi
 mkdir -p "$output_dir"
 
 work_dir="$(mktemp -d -t tunnelful-release)"
+lsregister_bin='/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
 cleanup() {
   if [[ -n "${work_dir:-}" && "$work_dir" == */tunnelful-release.* && -d "$work_dir" ]]; then
+    if [[ -x "$lsregister_bin" ]]; then
+      while IFS= read -r -d '' bundle; do
+        "$lsregister_bin" -u "$bundle" >/dev/null 2>&1 || true
+      done < <(find "$work_dir" -name 'Tunnelful.app' -type d -print0 2>/dev/null)
+    fi
     rm -rf "$work_dir"
   fi
 }
@@ -312,13 +318,15 @@ generate_sparkle_appcast() {
   chmod 600 "$private_key_path"
 
   appcast_dir="$work_dir/appcast"
-  mkdir -p "$appcast_dir"
+  sparkle_home="$work_dir/sparkle-home"
+  mkdir -p "$appcast_dir" "$sparkle_home"
   ditto "$arm64_dmg" "$appcast_dir/Tunnelful-$version-arm64.dmg"
   ditto "$x86_64_dmg" "$appcast_dir/Tunnelful-$version-x86_64.dmg"
   ditto "$release_notes_path" "$appcast_dir/Tunnelful-$version-arm64.md"
   ditto "$release_notes_path" "$appcast_dir/Tunnelful-$version-x86_64.md"
 
-  "$generate_appcast" \
+  # 隔离 Sparkle 缓存，避免把解压出的 Intel 应用写进用户 Library/Caches 并被 Launch Services 索引。
+  HOME="$sparkle_home" "$generate_appcast" \
     --ed-key-file "$private_key_path" \
     --download-url-prefix "https://github.com/ihopefulChina/Tunnelful/releases/download/v$version/" \
     --link "https://github.com/ihopefulChina/Tunnelful/releases/tag/v$version" \

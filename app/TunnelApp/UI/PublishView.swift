@@ -13,12 +13,7 @@ struct PublishView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                PageHeader(
-                    title: "发布本地服务",
-                    subtitle: "准备 Ingress、检查源站，并在确认后配置 DNS 路由。"
-                )
-
+            VStack(alignment: .leading, spacing: AppMetrics.sectionSpacing) {
                 NoticeView(
                     kind: .info,
                     title: "远端 DNS 需要确认",
@@ -29,12 +24,12 @@ struct PublishView: View {
                 routeSection
                 applySection
             }
-            .padding(.horizontal, 36)
-            .padding(.top, 34)
-            .padding(.bottom, 30)
-            .frame(maxWidth: 940, alignment: .leading)
+            .padding(.horizontal, AppMetrics.pagePadding)
+            .padding(.top, AppMetrics.pageTopPadding)
+            .padding(.bottom, AppMetrics.pageBottomPadding)
+            .frame(maxWidth: AppMetrics.maxReadableWidth, alignment: .leading)
         }
-        .background(AppPalette.workspaceBackground)
+        .appPageBackground()
         .onAppear {
             applyDefaultsFromCurrentConfiguration()
         }
@@ -232,15 +227,18 @@ struct PublishView: View {
         subtitle: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.headline)
-                Text(subtitle).font(.callout).foregroundStyle(.secondary)
+                Text(title)
+                    .font(.headline)
+                    .tracking(-0.2)
+                Text(subtitle)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
             content()
         }
-        .padding(16)
-        .background(AppPalette.panelBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .appSurface(padding: 16)
     }
 
     private func previewRow(label: String, value: String) -> some View {
