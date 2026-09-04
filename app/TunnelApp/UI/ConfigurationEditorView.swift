@@ -27,7 +27,7 @@ struct ConfigurationEditorView: View {
                 .padding(.bottom, AppMetrics.pageBottomPadding)
                 .frame(maxWidth: .infinity, alignment: .top)
             }
-            .scrollIndicators(.hidden)
+            .scrollIndicators(.never)
 
             if draftDocument != nil {
                 saveBar
@@ -249,7 +249,7 @@ struct ConfigurationEditorView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .padding(AppMetrics.stackSpacing)
             }
-            .scrollIndicators(.hidden)
+            .scrollIndicators(.never)
             .frame(minHeight: 160, maxHeight: 240)
             .appSurface(padding: 0, fill: AppPalette.workspace)
             .accessibilityLabel("YAML 预览")

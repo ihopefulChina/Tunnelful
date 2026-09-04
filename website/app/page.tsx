@@ -4,7 +4,7 @@ import DownloadChooser from './DownloadChooser';
 import ThemeToggle from './ThemeToggle';
 
 const repositoryURL = 'https://github.com/ihopefulChina/Tunnelful';
-const releasesURL = `${repositoryURL}/releases/tag/v0.1.8`;
+const releasesURL = `${repositoryURL}/releases/tag/v0.1.9`;
 
 const basePath = process.env.TUNNELFUL_PAGES === '1' ? '/Tunnelful' : '';
 
@@ -86,7 +86,7 @@ export default function Home() {
         <figure className="product-figure">
           <Image
             className="product-image product-image-light"
-            src={`${basePath}/tunnelful-window-v0.1.8.png`}
+            src={`${basePath}/tunnelful-window-v0.1.9.png`}
             width={2240}
             height={1560}
             alt="Tunnelful 浅色主窗口：左侧为功能导航，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
@@ -95,7 +95,7 @@ export default function Home() {
           />
           <Image
             className="product-image product-image-dark"
-            src={`${basePath}/tunnelful-window-dark-v0.1.8.png`}
+            src={`${basePath}/tunnelful-window-dark-v0.1.9.png`}
             width={2240}
             height={1560}
             alt="Tunnelful 深色主窗口：左侧为功能导航，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
@@ -157,7 +157,7 @@ export default function Home() {
         />
         <h2 id="download-title">让 Tunnel 回到 Mac 的使用方式。</h2>
         <p>免费、开源。分别为 Apple 芯片与 Intel Mac 提供原生安装包。</p>
-        <a className="button button-primary" href="#downloads">选择 Tunnelful 0.1.8</a>
+        <a className="button button-primary" href="#downloads">选择 Tunnelful 0.1.9</a>
         <a className="release-link" href={releasesURL}>查看发布说明</a>
       </section>
 

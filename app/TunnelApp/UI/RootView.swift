@@ -70,7 +70,8 @@ struct RootView: View {
                 }
             }
             .listStyle(.sidebar)
-            .scrollIndicators(.hidden)
+            .scrollIndicators(.never)
+            .hideLegacyScrollers()
             .tint(.accentColor)
             .navigationSplitViewColumnWidth(min: 188, ideal: 216, max: 260)
         } detail: {

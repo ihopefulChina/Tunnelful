@@ -30,16 +30,16 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="website/public/tunnelful-window-dark-v0.1.8.png" />
-    <source media="(prefers-color-scheme: light)" srcset="website/public/tunnelful-window-v0.1.8.png" />
-    <img src="website/public/tunnelful-window-v0.1.8.png" alt="Tunnelful 原生 macOS 主窗口，分别展示本地进程、Cloudflare Edge 与源站状态" width="1120" />
+    <source media="(prefers-color-scheme: dark)" srcset="website/public/tunnelful-window-dark-v0.1.9.png" />
+    <source media="(prefers-color-scheme: light)" srcset="website/public/tunnelful-window-v0.1.9.png" />
+    <img src="website/public/tunnelful-window-v0.1.9.png" alt="Tunnelful 原生 macOS 主窗口，分别展示本地进程、Cloudflare Edge 与源站状态" width="1120" />
   </picture>
 </p>
 
 <p align="center"><sub>主窗口概览 · 截图使用示例数据</sub></p>
 
 > [!IMPORTANT]
-> 当前源码版本为 `0.1.8`，可下载版本及其支持架构以 [GitHub Releases](https://github.com/ihopefulChina/Tunnelful/releases) 中的实际附件为准。目前公开安装包采用 ad-hoc 签名，尚未使用 Developer ID 签名或经过 Apple 公证。
+> 当前源码版本为 `0.1.9`，可下载版本及其支持架构以 [GitHub Releases](https://github.com/ihopefulChina/Tunnelful/releases) 中的实际附件为准。目前公开安装包采用 ad-hoc 签名，尚未使用 Developer ID 签名或经过 Apple 公证。
 
 ## 核心能力
 
@@ -56,9 +56,9 @@
 
 | 项目 | 当前支持 |
 | --- | --- |
-| 当前源码 | `0.1.8`；已发布版本见 [Releases](https://github.com/ihopefulChina/Tunnelful/releases) |
+| 当前源码 | `0.1.9`；已发布版本见 [Releases](https://github.com/ihopefulChina/Tunnelful/releases) |
 | macOS | macOS 14 或更高版本 |
-| `0.1.8` 构建目标 | Apple 芯片 `arm64` 与 Intel `x86_64` 单架构 DMG |
+| `0.1.9` 构建目标 | Apple 芯片 `arm64` 与 Intel `x86_64` 单架构 DMG |
 | Tunnel 引擎 | 用户自行安装的官方 `cloudflared` |
 | 主要工作流 | 已有本地配置的 locally-managed 命名 Tunnel |
 | 分发状态 | ad-hoc 签名，尚无 Developer ID 签名与 Apple 公证 |
@@ -247,8 +247,8 @@ Tunnelful/
 
 ```bash
 bash scripts/build-release.sh
-bash scripts/verify-release.sh release/Tunnelful-0.1.8-arm64.dmg release/appcast.xml
-bash scripts/verify-release.sh release/Tunnelful-0.1.8-x86_64.dmg release/appcast.xml
+bash scripts/verify-release.sh release/Tunnelful-0.1.9-arm64.dmg release/appcast.xml
+bash scripts/verify-release.sh release/Tunnelful-0.1.9-x86_64.dmg release/appcast.xml
 ```
 
 发布脚本会分别构建 `arm64` 与 `x86_64` 应用，移除调试符号、应用 ad-hoc 签名并验证 DMG；它不会访问 Developer ID 证书，也不会执行 Apple 公证或上传产物。

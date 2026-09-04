@@ -155,9 +155,73 @@ struct AppSurfaceModifier: ViewModifier {
 struct AppPageBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .scrollIndicators(.hidden)
+            .scrollIndicators(.never)
+            .modifier(HideScrollIndicators())
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(AppPalette.workspace)
+    }
+}
+
+/// SwiftUI's `.scrollIndicators(.hidden)` still shows macOS legacy scrollers
+/// when a mouse is connected. Walk the AppKit tree and turn them off.
+private struct HideScrollIndicators: ViewModifier {
+    func body(content: Content) -> some View {
+        content.background(alignment: .topLeading) {
+            ScrollIndicatorHider()
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+private struct ScrollIndicatorHider: NSViewRepresentable {
+    func makeNSView(context: Context) -> ScrollIndicatorHiderView {
+        ScrollIndicatorHiderView()
+    }
+
+    func updateNSView(_ nsView: ScrollIndicatorHiderView, context: Context) {
+        nsView.hideScrollers()
+    }
+}
+
+final class ScrollIndicatorHiderView: NSView {
+    override var intrinsicContentSize: NSSize { .zero }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        hideScrollers()
+    }
+
+    override func layout() {
+        super.layout()
+        hideScrollers()
+    }
+
+    func hideScrollers() {
+        NativeWindowAppearance.hideScrollers(in: window?.contentView ?? enclosingScrollView ?? self)
+    }
+}
+
+enum NativeWindowAppearance {
+    static func apply(to window: NSWindow) {
+        window.backgroundColor = .windowBackgroundColor
+        window.isOpaque = true
+        if let contentView = window.contentView {
+            hideScrollers(in: contentView)
+        }
+    }
+
+    static func hideScrollers(in view: NSView) {
+        if let scrollView = view as? NSScrollView {
+            scrollView.hasVerticalScroller = false
+            scrollView.hasHorizontalScroller = false
+            scrollView.autohidesScrollers = true
+            scrollView.scrollerStyle = .overlay
+        }
+        for subview in view.subviews {
+            hideScrollers(in: subview)
+        }
     }
 }
 
@@ -191,6 +255,10 @@ extension View {
 
     func appPageBackground() -> some View {
         modifier(AppPageBackground())
+    }
+
+    func hideLegacyScrollers() -> some View {
+        modifier(HideScrollIndicators())
     }
 
     func appChromeBackground() -> some View {

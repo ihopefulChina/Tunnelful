@@ -64,7 +64,7 @@ struct LogsView: View {
                     }
                 }
                 .tableStyle(.inset(alternatesRowBackgrounds: true))
-                .scrollIndicators(.hidden)
+                .scrollIndicators(.never)
             }
         }
         .appPageBackground()

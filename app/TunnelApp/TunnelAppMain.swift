@@ -69,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func windowDidBecomeKey(_ notification: Notification) {
         guard let window = notification.object as? NSWindow, window.canBecomeKey else { return }
+        NativeWindowAppearance.apply(to: window)
         ApplicationActivation.showSystemMenu()
     }
 
