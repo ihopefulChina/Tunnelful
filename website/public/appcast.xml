@@ -3,27 +3,40 @@
     <channel>
         <title>Tunnelful</title>
         <item>
-            <title>0.1.9</title>
-            <pubDate>Fri, 04 Sep 2026 07:26:16 +0000</pubDate>
-            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.9</link>
-            <sparkle:version>25</sparkle:version>
-            <sparkle:shortVersionString>0.1.9</sparkle:shortVersionString>
+            <title>0.1.10</title>
+            <pubDate>Fri, 04 Sep 2026 09:26:45 +0000</pubDate>
+            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.10</link>
+            <sparkle:informationalUpdate>
+                <sparkle:belowVersion>26</sparkle:belowVersion>
+            </sparkle:informationalUpdate>
+            <sparkle:version>27</sparkle:version>
+            <sparkle:shortVersionString>0.1.10</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.9
+            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.10
 
-Tunnelful `0.1.9` 继续支持 Apple 芯片与 Intel Mac，最低系统版本为 macOS 14。
+Tunnelful `0.1.10` 继续支持 Apple 芯片与 Intel Mac，最低系统版本为 macOS 14。
 
 ## 本次变化
 
-- 侧栏改回扁平列表，不再使用状态/配置/诊断分组；标题栏、侧栏底角与卡片底色与官网产品截图一致。
-- 外接鼠标时也会隐藏系统传统滚动条，页面仍可滚动，不再露出右侧轨道。
-- 更新官网、README 与设计校验中的浅色/深色主窗口截图；官网产品图去掉描边。
+- 主窗口对齐官网的原生 macOS 视觉，并按“状态 / 配置 / 诊断”整理侧栏；同时修复首启窗口未正确激活、系统菜单未出现和辅助功能提示不准确的问题。
+- 修复发布页保存后 DNS 操作消失、路径规则被忽略、切换配置仍残留旧计划，以及 Tunnel 名称、已删除 Tunnel 与运行中 Tunnel 身份不一致的问题。
+- 加固配置写入：在原子替换前后检测外部改动，保留最新第三方写入，并继承权限、ACL 与扩展属性；兼容带空格或引号的顶层 `tunnel` 键。
+- 修复退出、登录、启动项和进程控制竞态；退出期间不再接受新的启动/重启任务，LaunchAgent 停用失败时保留可重试状态。
+- 源站检查严格绑定当前 URL，日志与凭据错误继续脱敏；`cert.pem` 只在本机验证结构，失效文件会先备份再重新登录。
+- 恢复遵循 macOS 系统滚动条偏好，并补充公开截图、更新源与发布一致性检查。
+- 将正式 Bundle ID 调整为 `app.ihopeful.Tunnelful`，并自动迁移旧版偏好设置。
 
-## 下载 Tunnelful 0.1.9
+## 从 0.1.9 或更早版本升级
 
-- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/latest/download/Tunnelful-0.1.9-arm64.dmg)
-- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/latest/download/Tunnelful-0.1.9-x86_64.dmg)
+0.1.9 及更早版本使用旧 Bundle ID，不能通过旧版的应用内更新直接替换为 0.1.10。旧版“检查更新”只会显示迁移说明并引导打开本 Release，不会下载或安装 Bundle ID 不同的应用。若启用了“登录 Mac 时自动打开”，请先在旧版设置中关闭它，然后退出旧版，手动下载与你的 Mac 芯片对应的 0.1.10 DMG，再用其中的 `Tunnelful.app` 替换“应用程序”里的旧应用。
+
+0.1.10 首次启动会自动迁移其余偏好设置。安装完成后，可按需在新版设置中重新开启“登录 Mac 时自动打开”。
+
+## 下载 Tunnelful 0.1.10
+
+- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.10/Tunnelful-0.1.10-arm64.dmg)
+- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.10/Tunnelful-0.1.10-x86_64.dmg)
 
 两个安装包都需要 macOS 14 或更高版本。不确定芯片类型时，可在苹果菜单的「关于本机」中查看“芯片”或“处理器”。
 
@@ -38,8 +51,8 @@ Tunnelful `0.1.9` 继续支持 Apple 芯片与 Intel Mac，最低系统版本为
 校验下载文件：
 
 ```bash
-shasum -a 256 -c Tunnelful-0.1.9-arm64.dmg.sha256
-shasum -a 256 -c Tunnelful-0.1.9-x86_64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.10-arm64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.10-x86_64.dmg.sha256
 ```
 
 ## 分发方式与首次打开
@@ -56,35 +69,48 @@ shasum -a 256 -c Tunnelful-0.1.9-x86_64.dmg.sha256
 
 - 当前主要面向本地管理的命名 Tunnel。
 - DNS 路由不会自动执行或批量执行；命令显式传入 `--overwrite-dns=false`，每次远端变更都需要用户确认。
-- 0.1.2 无法启动，不能通过应用内更新升级；请重新下载 0.1.9。
-- 0.1.3 与 0.1.4 的应用内更新源仍指向过期的 0.1.2，请重新下载 0.1.9，不要安装提示中的 0.1.2。
+- 0.1.2 无法启动，不能通过应用内更新升级；请重新下载当前版本。
+- 0.1.3 与 0.1.4 的应用内更新源仍指向过期的 0.1.2，请重新下载当前版本，不要安装提示中的 0.1.2。
 - 暂不提供 Quick Tunnel、远程配置管理、Access、私网路由或多主机副本。
 - 日志脱敏属于防误操作保护；分享前仍需人工检查。
 - 构建与签名验证通过不等于真实 Cloudflare 账号联调或生产可用性验证通过。
 ]]></description>
-            <enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.9/Tunnelful-0.1.9-arm64.dmg" length="1407791" type="application/octet-stream" sparkle:edSignature="vDq+142TjfdADBnLvv8FgJYCXLAwX/89JNjVhBOD76FsKzx1mnlp3MBmajjlhLYZk7B5zbL81OxAsw83rnxtBA=="/>
+            <enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.10/Tunnelful-0.1.10-arm64.dmg" length="1454897" type="application/octet-stream" sparkle:edSignature="DESbJchk8mCY2qt3Kx1G/1inix3UVyyacc/f1TiAywhT77TxqjRashVRTAKOQJ0FcgxEEh+2LUtUrlxdcJbACA=="/>
         </item>
         <item>
-            <title>0.1.9</title>
-            <pubDate>Fri, 04 Sep 2026 07:26:48 +0000</pubDate>
-            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.9</link>
-            <sparkle:version>24</sparkle:version>
-            <sparkle:shortVersionString>0.1.9</sparkle:shortVersionString>
+            <title>0.1.10</title>
+            <pubDate>Fri, 04 Sep 2026 09:27:13 +0000</pubDate>
+            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.10</link>
+            <sparkle:informationalUpdate>
+                <sparkle:belowVersion>26</sparkle:belowVersion>
+            </sparkle:informationalUpdate>
+            <sparkle:version>26</sparkle:version>
+            <sparkle:shortVersionString>0.1.10</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.9
+            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.10
 
-Tunnelful `0.1.9` 继续支持 Apple 芯片与 Intel Mac，最低系统版本为 macOS 14。
+Tunnelful `0.1.10` 继续支持 Apple 芯片与 Intel Mac，最低系统版本为 macOS 14。
 
 ## 本次变化
 
-- 侧栏改回扁平列表，不再使用状态/配置/诊断分组；标题栏、侧栏底角与卡片底色与官网产品截图一致。
-- 外接鼠标时也会隐藏系统传统滚动条，页面仍可滚动，不再露出右侧轨道。
-- 更新官网、README 与设计校验中的浅色/深色主窗口截图；官网产品图去掉描边。
+- 主窗口对齐官网的原生 macOS 视觉，并按“状态 / 配置 / 诊断”整理侧栏；同时修复首启窗口未正确激活、系统菜单未出现和辅助功能提示不准确的问题。
+- 修复发布页保存后 DNS 操作消失、路径规则被忽略、切换配置仍残留旧计划，以及 Tunnel 名称、已删除 Tunnel 与运行中 Tunnel 身份不一致的问题。
+- 加固配置写入：在原子替换前后检测外部改动，保留最新第三方写入，并继承权限、ACL 与扩展属性；兼容带空格或引号的顶层 `tunnel` 键。
+- 修复退出、登录、启动项和进程控制竞态；退出期间不再接受新的启动/重启任务，LaunchAgent 停用失败时保留可重试状态。
+- 源站检查严格绑定当前 URL，日志与凭据错误继续脱敏；`cert.pem` 只在本机验证结构，失效文件会先备份再重新登录。
+- 恢复遵循 macOS 系统滚动条偏好，并补充公开截图、更新源与发布一致性检查。
+- 将正式 Bundle ID 调整为 `app.ihopeful.Tunnelful`，并自动迁移旧版偏好设置。
 
-## 下载 Tunnelful 0.1.9
+## 从 0.1.9 或更早版本升级
 
-- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/latest/download/Tunnelful-0.1.9-arm64.dmg)
-- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/latest/download/Tunnelful-0.1.9-x86_64.dmg)
+0.1.9 及更早版本使用旧 Bundle ID，不能通过旧版的应用内更新直接替换为 0.1.10。旧版“检查更新”只会显示迁移说明并引导打开本 Release，不会下载或安装 Bundle ID 不同的应用。若启用了“登录 Mac 时自动打开”，请先在旧版设置中关闭它，然后退出旧版，手动下载与你的 Mac 芯片对应的 0.1.10 DMG，再用其中的 `Tunnelful.app` 替换“应用程序”里的旧应用。
+
+0.1.10 首次启动会自动迁移其余偏好设置。安装完成后，可按需在新版设置中重新开启“登录 Mac 时自动打开”。
+
+## 下载 Tunnelful 0.1.10
+
+- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.10/Tunnelful-0.1.10-arm64.dmg)
+- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.10/Tunnelful-0.1.10-x86_64.dmg)
 
 两个安装包都需要 macOS 14 或更高版本。不确定芯片类型时，可在苹果菜单的「关于本机」中查看“芯片”或“处理器”。
 
@@ -99,8 +125,8 @@ Tunnelful `0.1.9` 继续支持 Apple 芯片与 Intel Mac，最低系统版本为
 校验下载文件：
 
 ```bash
-shasum -a 256 -c Tunnelful-0.1.9-arm64.dmg.sha256
-shasum -a 256 -c Tunnelful-0.1.9-x86_64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.10-arm64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.10-x86_64.dmg.sha256
 ```
 
 ## 分发方式与首次打开
@@ -117,13 +143,13 @@ shasum -a 256 -c Tunnelful-0.1.9-x86_64.dmg.sha256
 
 - 当前主要面向本地管理的命名 Tunnel。
 - DNS 路由不会自动执行或批量执行；命令显式传入 `--overwrite-dns=false`，每次远端变更都需要用户确认。
-- 0.1.2 无法启动，不能通过应用内更新升级；请重新下载 0.1.9。
-- 0.1.3 与 0.1.4 的应用内更新源仍指向过期的 0.1.2，请重新下载 0.1.9，不要安装提示中的 0.1.2。
+- 0.1.2 无法启动，不能通过应用内更新升级；请重新下载当前版本。
+- 0.1.3 与 0.1.4 的应用内更新源仍指向过期的 0.1.2，请重新下载当前版本，不要安装提示中的 0.1.2。
 - 暂不提供 Quick Tunnel、远程配置管理、Access、私网路由或多主机副本。
 - 日志脱敏属于防误操作保护；分享前仍需人工检查。
 - 构建与签名验证通过不等于真实 Cloudflare 账号联调或生产可用性验证通过。
 ]]></description>
-            <enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.9/Tunnelful-0.1.9-x86_64.dmg" length="1521278" type="application/octet-stream" sparkle:edSignature="WXm4i2v9Y+YSzx34ZuxVqC6/AVh3Ttyy607onaGdohqr2GxNsydmTqWlSxO4DxmsVruS9DOpBZWxmkKVBuANBA=="/>
+            <enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.10/Tunnelful-0.1.10-x86_64.dmg" length="1577792" type="application/octet-stream" sparkle:edSignature="jrCyDrmOFxrhA2/0Z1P4W19IZzQhsVicgFnkBUWbXZbDzOordCO3RQnZbZuGCERRYW92GIJUIoCCgtpuMtHYAw=="/>
         </item>
     </channel>
 </rss>

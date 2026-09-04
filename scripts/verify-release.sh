@@ -102,6 +102,12 @@ launch_out=''
 launch_pid=''
 verify_home=''
 cleanup() {
+  local original_status=$?
+  local cleanup_status=0
+  local detach_attempt
+  local detached=false
+  trap - EXIT
+  set +e
   if [[ -n "${launch_pid:-}" ]]; then
     kill "$launch_pid" 2>/dev/null || true
     wait "$launch_pid" 2>/dev/null || true
@@ -110,7 +116,28 @@ cleanup() {
     unregister_bundle "$app_path"
   fi
   if [[ -n "$device" ]]; then
-    hdiutil detach "$device" -quiet || true
+    for detach_attempt in 1 2 3; do
+      if hdiutil detach "$device" -quiet; then
+        detached=true
+        break
+      fi
+      if ! hdiutil info | grep -F -- "$device" >/dev/null; then
+        detached=true
+        break
+      fi
+      sleep 1
+    done
+    if [[ "$detached" != true ]]; then
+      if hdiutil detach "$device" -force -quiet; then
+        detached=true
+      elif ! hdiutil info | grep -F -- "$device" >/dev/null; then
+        detached=true
+      fi
+    fi
+    if [[ "$detached" != true ]]; then
+      echo "无法卸载发布验证磁盘映像：$device" >&2
+      cleanup_status=1
+    fi
   fi
   if [[ -n "${sparkle_key_file:-}" && -f "$sparkle_key_file" ]]; then
     rm -f "$sparkle_key_file"
@@ -127,6 +154,10 @@ cleanup() {
   if [[ -n "${mount_dir:-}" && "$mount_dir" == */tunnelful-verify.* && -d "$mount_dir" ]]; then
     rmdir "$mount_dir" 2>/dev/null || true
   fi
+  if (( original_status == 0 && cleanup_status != 0 )); then
+    exit "$cleanup_status"
+  fi
+  exit "$original_status"
 }
 trap cleanup EXIT
 
