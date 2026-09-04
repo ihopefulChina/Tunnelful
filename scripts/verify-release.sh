@@ -53,6 +53,8 @@ expected_bundle_identifier='app.ihopeful.Tunnelful'
 legacy_identity_build_cutoff='26'
 sparkle_feed_url='https://ihopefulchina.github.io/Tunnelful/appcast.xml'
 sparkle_public_key='0hyxOLR9zBFNvSdozSz0hALE/wHrk72Vsad4KxqpyM0='
+minimum_build_sdk='26.0'
+minimum_build_sdk_major="${minimum_build_sdk%%.*}"
 if [[ "$configured_bundle_identifier" != "$expected_bundle_identifier" ]]; then
   echo "项目 Bundle ID $configured_bundle_identifier 与发布身份 $expected_bundle_identifier 不一致。" >&2
   exit 1
@@ -209,6 +211,20 @@ fi
 actual_architecture="$(lipo -archs "$binary")"
 if [[ "$actual_architecture" != "$expected_architecture" ]]; then
   echo "应用架构不符合磁盘映像名称；预期 $expected_architecture，实际 $actual_architecture。" >&2
+  exit 1
+fi
+
+build_sdk="$(
+  otool -l "$binary" |
+    awk '$1 == "cmd" { in_build_version = ($2 == "LC_BUILD_VERSION"); next } in_build_version && $1 == "sdk" { print $2; exit }'
+)"
+if [[ ! "$build_sdk" =~ ^([0-9]+)\.([0-9]+)(\.[0-9]+)?$ ]]; then
+  echo "无法从主程序读取有效的构建 SDK：${build_sdk:-未知}。" >&2
+  exit 1
+fi
+build_sdk_major="${BASH_REMATCH[1]}"
+if (( 10#$build_sdk_major < 10#$minimum_build_sdk_major )); then
+  echo "主程序构建 SDK 必须不低于 ${minimum_build_sdk}，当前为：${build_sdk:-未知}。" >&2
   exit 1
 fi
 
@@ -462,4 +478,5 @@ fi
 echo "验证通过：$(basename "$dmg_path")"
 echo "应用架构：$expected_architecture"
 echo "内部版本：$expected_build"
+echo "主程序构建 SDK：macOS $build_sdk"
 echo '签名类型：ad-hoc；Apple 公证：未执行。'

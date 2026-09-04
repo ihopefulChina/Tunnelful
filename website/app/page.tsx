@@ -4,7 +4,7 @@ import DownloadChooser from './DownloadChooser';
 import ThemeToggle from './ThemeToggle';
 
 const repositoryURL = 'https://github.com/ihopefulChina/Tunnelful';
-const releasesURL = `${repositoryURL}/releases/tag/v0.1.10`;
+const releasesURL = `${repositoryURL}/releases/tag/v0.1.11`;
 
 const basePath = process.env.TUNNELFUL_PAGES === '1' ? '/Tunnelful' : '';
 
@@ -101,7 +101,7 @@ export default function Home() {
             src={`${basePath}/tunnelful-window-v0.1.10.png`}
             width={2240}
             height={1560}
-            alt="Tunnelful 0.1.10 浅色主窗口：左侧按状态、配置与诊断分组，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
+            alt="Tunnelful 浅色主窗口：左侧按状态、配置与诊断分组，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
             priority
             unoptimized
           />
@@ -110,12 +110,13 @@ export default function Home() {
             src={`${basePath}/tunnelful-window-dark-v0.1.10.png`}
             width={2240}
             height={1560}
-            alt="Tunnelful 0.1.10 深色主窗口：左侧按状态、配置与诊断分组，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
+            alt="Tunnelful 深色主窗口：左侧按状态、配置与诊断分组，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
             priority
             unoptimized
           />
           <figcaption>
-            原生侧栏按状态、配置与诊断分组，集中查看 Tunnel、发布、Ingress、环境与日志。
+            0.1.11 使用 Xcode 26 与 macOS 26 SDK 构建；在 macOS 26 上呈现图中的原生侧栏。
+            macOS 14 与 macOS 15 会采用对应系统的原生样式。
           </figcaption>
         </figure>
       </section>
@@ -173,7 +174,7 @@ export default function Home() {
         />
         <h2 id="download-title">让 Tunnel 回到 Mac 的使用方式。</h2>
         <p>免费、开源。分别为 Apple 芯片与 Intel Mac 提供原生安装包。</p>
-        <a className="button button-primary" href="#downloads">选择 Tunnelful 0.1.10</a>
+        <a className="button button-primary" href="#downloads">选择 Tunnelful 0.1.11</a>
         <a className="release-link" href={releasesURL}>查看发布说明</a>
       </section>
 

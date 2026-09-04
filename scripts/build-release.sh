@@ -19,6 +19,8 @@ for command_name in xcodebuild codesign hdiutil ditto lipo plutil shasum strip o
   fi
 done
 
+bash "$script_dir/check-xcode-toolchain.sh"
+
 version="$(tr -d '[:space:]' < "$release_version_file")"
 app_version="$(sed -nE 's/^[[:space:]]*MARKETING_VERSION[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"
 configured_release_version="$(sed -nE 's/^[[:space:]]*TUNNELFUL_RELEASE_VERSION[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"

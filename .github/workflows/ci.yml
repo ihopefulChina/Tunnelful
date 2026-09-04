@@ -27,6 +27,8 @@ jobs:
       - name: 确认发布工作流会生成 Sparkle 更新源
         run: |
           set -euo pipefail
+          grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' .github/workflows/publish-app.yml
+          grep -Fq "minimum_build_sdk='26.0'" scripts/verify-release.sh
           grep -Fq 'secrets.TUNNELFUL_SPARKLE_ED_PRIVATE_KEY' .github/workflows/publish-app.yml
           grep -Fq 'release/appcast.xml' .github/workflows/publish-app.yml
           grep -Fq 'gh release download "v' .github/workflows/pages.yml
@@ -35,6 +37,8 @@ jobs:
   macos-app:
     name: macOS 应用（${{ matrix.architecture }}）
     runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     strategy:
       fail-fast: false
       matrix:
@@ -42,6 +46,8 @@ jobs:
     steps:
       - name: 检出仓库
         uses: actions/checkout@v6
+      - name: 校验 Xcode 26 构建环境
+        run: bash scripts/check-xcode-toolchain.sh
       - name: 运行 Swift 单元测试
         run: swift test --package-path app
       - name: 构建并验证单架构应用
@@ -63,6 +69,20 @@ jobs:
             echo "应用架构不符合预期：$actual_architecture" >&2
             exit 1
           fi
+          build_sdk="$(
+            otool -l "$binary" |
+              awk '$1 == "cmd" { in_build_version = ($2 == "LC_BUILD_VERSION"); next } in_build_version && $1 == "sdk" { print $2; exit }'
+          )"
+          if [[ ! "$build_sdk" =~ ^([0-9]+)\.([0-9]+)(\.[0-9]+)?$ ]]; then
+            echo "无法从主程序读取有效的构建 SDK：${build_sdk:-未知}。" >&2
+            exit 1
+          fi
+          build_sdk_major="${BASH_REMATCH[1]}"
+          if (( 10#$build_sdk_major < 26 )); then
+            echo "主程序构建 SDK 必须不低于 26.0，当前为：${build_sdk:-未知}。" >&2
+            exit 1
+          fi
+          echo "主程序构建 SDK：macOS $build_sdk"
 
   website:
     name: 中文官网

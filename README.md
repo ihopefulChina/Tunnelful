@@ -36,10 +36,10 @@
   </picture>
 </p>
 
-<p align="center"><sub>主窗口概览 · 截图使用示例数据</sub></p>
+<p align="center"><sub>0.1.11 在 macOS 26 上的外观基准 · 沿用未改动界面代码的已验收截图 · 截图使用示例数据</sub></p>
 
 > [!IMPORTANT]
-> 当前版本为 `0.1.10`，正式 Bundle ID 为 `app.ihopeful.Tunnelful`。`0.1.9` 及更早版本使用旧 Bundle ID，不能通过 Sparkle 直接替换为 0.1.10；旧版“检查更新”只会显示迁移说明并引导前往 [GitHub Releases](https://github.com/ihopefulChina/Tunnelful/releases)。请手动下载对应芯片的 0.1.10 DMG 并替换旧应用。偏好设置会自动迁移；若旧版启用了“登录 Mac 时自动打开”，请在替换应用前先关闭，安装后再在 0.1.10 中重新开启。可下载版本与附件以 Releases 页面实际内容为准。
+> 当前版本为 `0.1.11`，正式 Bundle ID 为 `app.ihopeful.Tunnelful`。0.1.10 可通过应用内“检查更新…”升级；`0.1.9` 及更早版本使用旧 Bundle ID，不能通过 Sparkle 直接替换，请手动下载对应芯片的 0.1.11 DMG。偏好设置会自动迁移；若旧版启用了“登录 Mac 时自动打开”，请在替换应用前先关闭，安装后再于新版中重新开启。可下载版本与附件以 Releases 页面实际内容为准。
 
 ## 核心能力
 
@@ -50,16 +50,16 @@
 - **安全写入**：先做本地结构检查，再调用官方 CLI 校验；通过后备份原文件并原子写入。文件被其他应用改动时会停止覆盖。
 - **服务发布**：检查 HTTP/HTTPS 源站，更新本地 Ingress，并在明确确认后通过官方 CLI 配置 DNS 路由。
 - **运行状态**：启动、停止和重启由 Tunnelful 创建的进程，分别展示本地进程、Cloudflare Edge 与源站状态。
-- **原生日常体验**：窗口打开时提供完整 macOS 系统菜单；关闭全部窗口后隐藏 Dock 图标并继续常驻菜单栏。同时支持系统/浅色/深色外观、登录 Mac 时打开、应用启动后运行当前 Tunnel，以及应用内检查并安装更新。
+- **原生日常体验**：窗口打开时提供完整 macOS 系统菜单；关闭全部窗口后隐藏 Dock 图标并继续常驻菜单栏。同时支持系统/浅色/深色外观、登录 Mac 时打开、应用启动后运行当前 Tunnel，以及应用内检查并安装更新。0.1.11 正式包使用 Xcode 26 与 macOS 26 SDK 构建，在 macOS 26 上采用该系统的原生侧栏外观。
 
 ## 适用范围
 
 | 项目 | 当前支持 |
 | --- | --- |
-| 当前源码 | `0.1.10`；已发布版本见 [Releases](https://github.com/ihopefulChina/Tunnelful/releases) |
+| 当前源码 | `0.1.11`；已发布版本见 [Releases](https://github.com/ihopefulChina/Tunnelful/releases) |
 | Bundle ID | `app.ihopeful.Tunnelful` |
 | macOS | macOS 14 或更高版本 |
-| `0.1.10` 构建目标 | Apple 芯片 `arm64` 与 Intel `x86_64` 单架构 DMG |
+| `0.1.11` 构建目标 | Apple 芯片 `arm64` 与 Intel `x86_64` 单架构 DMG；Xcode 26 / macOS 26 SDK；最低部署目标 macOS 14 |
 | Tunnel 引擎 | 用户自行安装的官方 `cloudflared` |
 | 主要工作流 | 已有本地配置的 locally-managed 命名 Tunnel |
 | 分发状态 | ad-hoc 签名，尚无 Developer ID 签名与 Apple 公证 |
@@ -85,7 +85,7 @@ shasum -a 256 -c 'Tunnelful-<version>-<arch>.dmg.sha256'
 
 打开 DMG，将 `Tunnelful.app` 拖入“应用程序”。当前版本尚未经过 Apple 公证，首次启动可在访达中按住 Control 点按应用并选择“打开”；若仍被阻止，请前往“系统设置 → 隐私与安全性”确认。不要使用来源不明的命令绕过 macOS 安全检查。
 
-从 `0.1.9` 或更早版本升级时，若启用了“登录 Mac 时自动打开”，请先在旧版设置中关闭它，然后退出旧版，再用 DMG 中的 `Tunnelful.app` 替换“应用程序”里的旧应用；安装后可在 0.1.10 中重新开启登录项。由于 Bundle ID 从 `app.tunnelful.mac` 调整为 `app.ihopeful.Tunnelful`，这次升级不能使用旧版的应用内安装；旧版更新窗口只提供说明和 Release 页面入口，不会下载或安装 Bundle ID 不同的应用。0.1.10 会自动迁移其余偏好设置。
+已安装 0.1.10 时，可使用应用内“检查更新…”升级到 0.1.11。若从 `0.1.9` 或更早版本升级，且启用了“登录 Mac 时自动打开”，请先在旧版设置中关闭它，然后退出旧版，再用当前 DMG 中的 `Tunnelful.app` 替换“应用程序”里的旧应用；安装后可在新版中重新开启登录项。由于 Bundle ID 从 0.1.10 起由 `app.tunnelful.mac` 调整为 `app.ihopeful.Tunnelful`，旧版不能使用应用内安装；更新窗口只提供说明和 Release 页面入口。新版会自动迁移其余偏好设置。
 
 ### 2. 准备 cloudflared
 
@@ -208,7 +208,7 @@ Tunnelful 会先显示待执行命令。你可以只复制它；若要直接执�
 
 ## 从源码开发
 
-要求：macOS 14 或更高版本、支持 Swift 5.10 的 Xcode。原生应用当前没有额外的第三方 Swift Package 依赖。
+要求：macOS 14 或更高版本、支持 Swift 5.10 的 Xcode。复现 0.1.11 正式包及 macOS 26 原生外观时必须使用 Xcode 26 与 macOS 26 SDK。原生应用当前没有额外的第三方 Swift Package 依赖。
 
 ```bash
 git clone https://github.com/ihopefulChina/Tunnelful.git
@@ -250,8 +250,8 @@ Tunnelful/
 
 ```bash
 bash scripts/build-release.sh
-bash scripts/verify-release.sh release/Tunnelful-0.1.10-arm64.dmg release/appcast.xml
-bash scripts/verify-release.sh release/Tunnelful-0.1.10-x86_64.dmg release/appcast.xml
+bash scripts/verify-release.sh release/Tunnelful-0.1.11-arm64.dmg release/appcast.xml
+bash scripts/verify-release.sh release/Tunnelful-0.1.11-x86_64.dmg release/appcast.xml
 ```
 
 发布脚本会分别构建 `arm64` 与 `x86_64` 应用，移除调试符号、应用 ad-hoc 签名并验证 DMG；它不会访问 Developer ID 证书，也不会执行 Apple 公证或上传产物。

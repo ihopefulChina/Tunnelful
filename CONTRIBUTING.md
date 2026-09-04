@@ -1,8 +1,8 @@
 # 贡献指南
 
-感谢你参与 Tunnelful。项目当前源码版本为 `0.1.10`，优先接受能够提升可靠性、安全性、可访问性和基础 Tunnel 工作流的聚焦改动。
+感谢你参与 Tunnelful。项目当前源码版本为 `0.1.11`，优先接受能够提升可靠性、安全性、可访问性和基础 Tunnel 工作流的聚焦改动。
 
-当前 `0.1.10` 构建流程分别生成 Apple 芯片 `arm64` 与 Intel `x86_64` 单架构应用。
+当前 `0.1.11` 构建流程使用 Xcode 26 与 macOS 26 SDK，分别生成 Apple 芯片 `arm64` 与 Intel `x86_64` 单架构应用，最低部署目标仍为 macOS 14。
 正式应用的 Bundle ID 为 `app.ihopeful.Tunnelful`。修改 Bundle ID 会影响偏好设置、登录项与 Sparkle 更新兼容性，不能作为普通重命名提交。
 
 ## 开始之前
@@ -17,7 +17,7 @@
 
 - Apple 芯片或 Intel Mac
 - macOS 14 或更高版本
-- 支持 Swift 5.10 的 Xcode
+- 支持 Swift 5.10 的 Xcode；正式发布和 macOS 26 外观验收必须使用 Xcode 26 与 macOS 26 SDK
 - 用于手动联调的官方 `cloudflared`
 
 打开项目：
@@ -85,8 +85,8 @@ npm run --prefix website build:pages
 
 ```bash
 bash scripts/build-release.sh
-bash scripts/verify-release.sh release/Tunnelful-0.1.10-arm64.dmg release/appcast.xml
-bash scripts/verify-release.sh release/Tunnelful-0.1.10-x86_64.dmg release/appcast.xml
+bash scripts/verify-release.sh release/Tunnelful-0.1.11-arm64.dmg release/appcast.xml
+bash scripts/verify-release.sh release/Tunnelful-0.1.11-x86_64.dmg release/appcast.xml
 ```
 
 发布脚本分别生成用于公开分发的 Apple 芯片与 Intel ad-hoc 签名包，不会执行 Developer ID 签名或 Apple 公证。
