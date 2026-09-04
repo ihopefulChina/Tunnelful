@@ -70,19 +70,18 @@ struct RootView: View {
                 }
             }
             .listStyle(.sidebar)
+            .scrollIndicators(.hidden)
+            .tint(.accentColor)
             .navigationSplitViewColumnWidth(min: 188, ideal: 216, max: 260)
         } detail: {
             NavigationStack {
                 detailView
                     .navigationTitle((selection ?? .overview).rawValue)
-                    .modifier(NavigationSubtitleIfAvailable(subtitle: (selection ?? .overview).subtitle))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                WindowStatusBar()
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .appWindowFill()
         .preferredColorScheme(model.appearance.colorScheme)
         .onChange(of: model.requestedSection) { _, section in
             consumeRequestedSection(section)
@@ -123,17 +122,5 @@ struct RootView: View {
         guard let section else { return }
         selection = section
         model.requestedSection = nil
-    }
-}
-
-private struct NavigationSubtitleIfAvailable: ViewModifier {
-    let subtitle: String
-
-    func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content.navigationSubtitle(subtitle)
-        } else {
-            content
-        }
     }
 }

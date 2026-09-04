@@ -43,11 +43,13 @@ enum AppMotion {
 enum AppPalette {
     /// Light: window-like wash, not Preview's under-page desk gray.
     /// Dark: slightly below the lifted panels so groups still separate.
-    static let workspace = dynamicColor(
+    static let workspaceNSColor = nsColor(
         name: "TunnelfulWorkspaceBackground",
         light: NSColor(calibratedWhite: 0.96, alpha: 1),
         dark: NSColor(calibratedWhite: 0.12, alpha: 1)
     )
+
+    static let workspace = Color(nsColor: workspaceNSColor)
 
     static let panel = dynamicColor(
         name: "TunnelfulPanelBackground",
@@ -75,10 +77,27 @@ enum AppPalette {
         dark: NSColor(calibratedRed: 0.96, green: 0.54, blue: 0.50, alpha: 1)
     )
 
-    private static func dynamicColor(name: String, light: NSColor, dark: NSColor) -> Color {
-        Color(nsColor: NSColor(name: NSColor.Name(name)) { appearance in
+    private static func nsColor(name: String, light: NSColor, dark: NSColor) -> NSColor {
+        NSColor(name: NSColor.Name(name)) { appearance in
             appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
-        })
+        }
+    }
+
+    private static func dynamicColor(name: String, light: NSColor, dark: NSColor) -> Color {
+        Color(nsColor: nsColor(name: name, light: light, dark: dark))
+    }
+}
+
+enum TunnelfulWindowChrome {
+    static func sync(_ window: NSWindow) {
+        guard window.styleMask.contains(.titled), window.canBecomeKey else { return }
+        window.appearance = NSApplication.shared.appearance
+        window.backgroundColor = AppPalette.workspaceNSColor
+        window.isOpaque = true
+    }
+
+    static func syncOpenWindows() {
+        NSApplication.shared.windows.forEach(sync)
     }
 }
 
@@ -162,6 +181,7 @@ struct AppSurfaceModifier: ViewModifier {
 struct AppPageBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
+            .scrollIndicators(.hidden)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(AppPalette.workspace)
     }
@@ -202,6 +222,23 @@ extension View {
     func appChromeBackground() -> some View {
         modifier(AppChromeBackground())
     }
+
+    func appWindowFill() -> some View {
+        modifier(AppWindowFill())
+    }
+}
+
+private struct AppWindowFill: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content
+                .containerBackground(AppPalette.workspace, for: .window)
+                .toolbarBackground(AppPalette.workspace, for: .windowToolbar)
+        } else {
+            content
+                .toolbarBackground(AppPalette.workspace, for: .windowToolbar)
+        }
+    }
 }
 
 struct StatusMetric: View {
@@ -219,7 +256,6 @@ struct StatusMetric: View {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .tracking(0.2)
 
             HStack(alignment: .center, spacing: AppMetrics.controlSpacing) {
                 Image(systemName: symbol)
@@ -421,7 +457,7 @@ struct SectionHeader: View {
     var body: some View {
         Text(title)
             .font(.headline)
-            .tracking(-0.2)
+            .foregroundStyle(.primary)
             .accessibilityAddTraits(.isHeader)
     }
 }
@@ -475,65 +511,6 @@ struct AppToolbarProgressButton: View {
         .help(help)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(isBusy ? "正在处理" : "")
-    }
-}
-
-struct WindowStatusBar: View {
-    @EnvironmentObject private var model: AppModel
-    @EnvironmentObject private var process: TunnelProcessController
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        HStack(spacing: AppMetrics.controlSpacing) {
-            statusChip(process.processState.label, tint: StatusAppearance.processTint(process.processState))
-            separator
-            statusChip("Edge \(process.edgeState.rawValue)", tint: StatusAppearance.edgeTint(process.edgeState))
-            separator
-            statusChip("源站 \(model.originState.label)", tint: StatusAppearance.originTint(model.originState))
-            Spacer(minLength: 12)
-            if let name = model.preferredTunnelName {
-                Text(name)
-                    .font(.system(.caption, design: .monospaced).weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(name)
-            }
-        }
-        .font(.caption.weight(.medium))
-        .tracking(0.15)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 7)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .appChromeBackground()
-        .animation(AppMotion.content(reduceMotion), value: process.processState)
-        .animation(AppMotion.content(reduceMotion), value: process.edgeState)
-        .animation(AppMotion.content(reduceMotion), value: model.originState)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilitySummary)
-    }
-
-    private var separator: some View {
-        Text("·")
-            .foregroundStyle(.tertiary)
-            .accessibilityHidden(true)
-    }
-
-    private func statusChip(_ label: String, tint: Color) -> some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(tint)
-                .frame(width: 7, height: 7)
-                .accessibilityHidden(true)
-            Text(label)
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-        }
-    }
-
-    private var accessibilitySummary: String {
-        let tunnel = model.preferredTunnelName.map { "，当前 Tunnel \($0)" } ?? ""
-        return "本地进程 \(process.processState.label)，Edge \(process.edgeState.rawValue)，源站 \(model.originState.label)\(tunnel)"
     }
 }
 

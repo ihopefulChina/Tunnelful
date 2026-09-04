@@ -831,6 +831,7 @@ final class AppModel: ObservableObject {
 
     private func applyAppearance() {
         NSApplication.shared.appearance = appearance.applicationAppearance
+        TunnelfulWindowChrome.syncOpenWindows()
     }
 }
 
