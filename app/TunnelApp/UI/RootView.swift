@@ -33,22 +33,6 @@ enum AppSection: String, CaseIterable, Identifiable {
     }
 }
 
-private enum SidebarGroup: String, CaseIterable, Identifiable {
-    case status = "状态"
-    case setup = "配置"
-    case diagnostics = "诊断"
-
-    var id: Self { self }
-
-    var sections: [AppSection] {
-        switch self {
-        case .status: return [.overview, .tunnels]
-        case .setup: return [.publish, .configuration]
-        case .diagnostics: return [.environment, .logs]
-        }
-    }
-}
-
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.openWindow) private var openWindow
@@ -56,18 +40,12 @@ struct RootView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $selection) {
-                ForEach(SidebarGroup.allCases) { group in
-                    Section(group.rawValue) {
-                        ForEach(group.sections) { section in
-                            Label(section.rawValue, systemImage: section.symbol)
-                                .tag(section)
-                                .help(section.subtitle)
-                                .accessibilityLabel(section.rawValue)
-                                .accessibilityHint(section.subtitle)
-                        }
-                    }
-                }
+            List(AppSection.allCases, selection: $selection) { section in
+                Label(section.rawValue, systemImage: section.symbol)
+                    .tag(section)
+                    .help(section.subtitle)
+                    .accessibilityLabel(section.rawValue)
+                    .accessibilityHint(section.subtitle)
             }
             .listStyle(.sidebar)
             .scrollIndicators(.never)
