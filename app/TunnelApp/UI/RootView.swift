@@ -54,6 +54,8 @@ struct RootView: View {
                 }
             }
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .background(AppPalette.chrome)
             .scrollIndicators(.never)
             .hideLegacyScrollers()
             .navigationSplitViewColumnWidth(min: 188, ideal: 216, max: 260)
@@ -61,7 +63,6 @@ struct RootView: View {
             NavigationStack {
                 detailView
                     .navigationTitle((selection ?? .overview).rawValue)
-                    .toolbarTitleDisplayMode(.inline)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }

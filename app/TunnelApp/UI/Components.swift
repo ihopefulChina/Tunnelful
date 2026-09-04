@@ -16,7 +16,7 @@ enum AppMetrics {
     static let keyValueSpacing: CGFloat = 12
     static let accessoryColumnWidth: CGFloat = 24
     static let iconHitSize: CGFloat = 28
-    static let hairlineOpacity: Double = 0.55
+    static let hairlineOpacity: Double = 1
     static let maxReadableWidth: CGFloat = 920
     static let maxContentWidth: CGFloat = 1_080
     static let statusMetricMinWidth: CGFloat = 180
@@ -41,10 +41,31 @@ enum AppMotion {
 }
 
 enum AppPalette {
-    static let workspace = Color(nsColor: .windowBackgroundColor)
-    static let panel = Color(nsColor: .controlBackgroundColor)
+    /// Sidebar, title bar over the sidebar, and window corners.
+    static let chromeNSColor = nsColor(
+        name: "TunnelfulChrome",
+        light: NSColor(calibratedWhite: 248.0 / 255.0, alpha: 1),
+        dark: NSColor(calibratedWhite: 29.0 / 255.0, alpha: 1)
+    )
 
-    static let hairline = Color(nsColor: .separatorColor)
+    static let workspaceNSColor = nsColor(
+        name: "TunnelfulWorkspace",
+        light: NSColor(calibratedWhite: 1, alpha: 1),
+        dark: NSColor(calibratedWhite: 30.0 / 255.0, alpha: 1)
+    )
+
+    static let chrome = Color(nsColor: chromeNSColor)
+
+    /// Detail canvas. Cards use the same fill and a hairline, matching the product shots.
+    static let workspace = Color(nsColor: workspaceNSColor)
+
+    static let panel = workspace
+
+    static let hairline = dynamicColor(
+        name: "TunnelfulHairline",
+        light: NSColor(calibratedWhite: 0.86, alpha: 1),
+        dark: NSColor(calibratedWhite: 0.22, alpha: 1)
+    )
 
     static let statusGreen = dynamicColor(
         name: "TunnelfulStatusGreen",
@@ -205,8 +226,11 @@ final class ScrollIndicatorHiderView: NSView {
 
 enum NativeWindowAppearance {
     static func apply(to window: NSWindow) {
-        window.backgroundColor = .windowBackgroundColor
+        // Fill window corners with the sidebar color so the bottom-left
+        // radius does not leak the desktop. Do not paint the toolbar white.
+        window.backgroundColor = AppPalette.chromeNSColor
         window.isOpaque = true
+        window.titlebarSeparatorStyle = .line
         if let contentView = window.contentView {
             hideScrollers(in: contentView)
         }
