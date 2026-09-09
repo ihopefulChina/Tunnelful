@@ -3,37 +3,38 @@
     <channel>
         <title>Tunnelful</title>
         <item>
-            <title>0.1.11</title>
-            <pubDate>Fri, 04 Sep 2026 10:19:37 +0000</pubDate>
-            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.11</link>
+            <title>0.1.12</title>
+            <pubDate>Wed, 09 Sep 2026 06:01:41 +0000</pubDate>
+            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.12</link>
             <sparkle:informationalUpdate>
                 <sparkle:belowVersion>26</sparkle:belowVersion>
             </sparkle:informationalUpdate>
-            <sparkle:version>29</sparkle:version>
-            <sparkle:shortVersionString>0.1.11</sparkle:shortVersionString>
+            <sparkle:version>31</sparkle:version>
+            <sparkle:shortVersionString>0.1.12</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.11
+            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.12
 
-Tunnelful `0.1.11` 继续支持 Apple 芯片与 Intel Mac，最低系统版本仍为 macOS 14。
+Tunnelful `0.1.12` 继续支持 Apple 芯片与 Intel Mac，最低系统版本仍为 macOS 14。
 
 ## 本次变化
 
-- 正式安装包改用 Xcode 26 与 macOS 26 SDK 构建。Tunnelful 继续使用原生 SwiftUI `NavigationSplitView`；在 macOS 26 上，系统现在会呈现与官网截图一致的原生圆角悬浮侧栏。
-- 将发布工具链锁定到 Xcode 26，并在构建与安装包验证中检查 SDK 信息，避免正式包再次因回落到旧 SDK 而显示旧式侧栏。
-- 最低部署目标保持 macOS 14。macOS 14 与 macOS 15 会按各自系统提供的原生样式显示，功能与升级路径不变。
-
-本次没有重做侧栏或更改 Tunnel、配置、DNS、更新与进程控制逻辑；修复的是正式包与已验收源码、官网截图之间的构建工具链偏差。
+- 强制退出或崩溃时，由应用启动的 `cloudflared` 会随看门狗一起结束，避免留下孤儿进程。
+- 官方登录会在等待期间显示浏览器地址，并在失败或超时时保留脱敏后的提示。
+- 启动、重启和开机自启只接受当前配置中的 `tunnel` 或 `credentials-file` 对应的 Tunnel，不再猜测 `dev`。
+- 概览页在启动中也会显示停止与重新启动；发布页接受 `unix:` 与 `http_status` 源站。
+- 官网下载入口跟随仓库版本号；芯片检测冲突时不再误标“推荐”。
+- 启动子进程时额外剥离 `DYLD_*` / `LD_*`。Intel 更新条目声明 `sparkle:hardwareRequirements=x86_64`。
 
 ## 升级说明
 
-- 已安装 0.1.10：可在 Tunnelful 中选择“检查更新…”，也可手动下载对应芯片的 0.1.11 DMG 替换现有应用。
-- 已安装 0.1.9 或更早版本：旧版使用不同的 Bundle ID，应用内更新只会显示迁移说明。请先退出旧版；若启用了“登录 Mac 时自动打开”，请先在旧版设置中关闭它，再手动安装 0.1.11。其余偏好设置会自动迁移。
+- 已安装 0.1.10 或 0.1.11：可在 Tunnelful 中选择“检查更新…”，也可手动下载对应芯片的 0.1.12 DMG 替换现有应用。
+- 已安装 0.1.9 或更早版本：旧版使用不同的 Bundle ID，应用内更新只会显示迁移说明。请先退出旧版；若启用了“登录 Mac 时自动打开”，请先在旧版设置中关闭它，再手动安装 0.1.12。其余偏好设置会自动迁移。
 
-## 下载 Tunnelful 0.1.11
+## 下载 Tunnelful 0.1.12
 
-- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.11/Tunnelful-0.1.11-arm64.dmg)
-- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.11/Tunnelful-0.1.11-x86_64.dmg)
+- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.12/Tunnelful-0.1.12-arm64.dmg)
+- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.12/Tunnelful-0.1.12-x86_64.dmg)
 
 两个安装包都需要 macOS 14 或更高版本。不确定芯片类型时，可在苹果菜单的「关于本机」中查看“芯片”或“处理器”。
 
@@ -48,8 +49,8 @@ Tunnelful `0.1.11` 继续支持 Apple 芯片与 Intel Mac，最低系统版本�
 校验下载文件：
 
 ```bash
-shasum -a 256 -c Tunnelful-0.1.11-arm64.dmg.sha256
-shasum -a 256 -c Tunnelful-0.1.11-x86_64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.12-arm64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.12-x86_64.dmg.sha256
 ```
 
 ## 分发方式与首次打开
@@ -72,40 +73,40 @@ shasum -a 256 -c Tunnelful-0.1.11-x86_64.dmg.sha256
 - 日志脱敏属于防误操作保护；分享前仍需人工检查。
 - 构建与签名验证通过不等于真实 Cloudflare 账号联调或生产可用性验证通过。
 ]]></description>
-            <enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.11/Tunnelful-0.1.11-arm64.dmg" length="1462396" type="application/octet-stream" sparkle:edSignature="O4lnu7mr68E+HDHjdHuvDMe5A78G2sPxkJdh3j1nQgFFhYKA7xqV0J6mi/vzAhEbU1dDo/qSj7D9TVFeILLMAw=="/>
+            <enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.12/Tunnelful-0.1.12-arm64.dmg" length="1487006" type="application/octet-stream" sparkle:edSignature="BaMX5hoXAeo1a738g2LZACkzfCWFgMiULxFzrnuT872AyYMV9vRaFwrAQShEpcNziuX2EayEiU9+PfXSha5gDQ=="/>
         </item>
         <item>
-            <title>0.1.11</title>
-            <pubDate>Fri, 04 Sep 2026 10:20:38 +0000</pubDate>
-            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.11</link>
+            <title>0.1.12</title>
+            <pubDate>Wed, 09 Sep 2026 06:02:23 +0000</pubDate>
+            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.12</link>
             <sparkle:informationalUpdate>
                 <sparkle:belowVersion>26</sparkle:belowVersion>
             </sparkle:informationalUpdate>
-            <sparkle:version>28</sparkle:version>
-            <sparkle:shortVersionString>0.1.11</sparkle:shortVersionString>
+            <sparkle:version>30</sparkle:version>
+            <sparkle:shortVersionString>0.1.12</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>x86_64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.11
+            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.12
 
-Tunnelful `0.1.11` 继续支持 Apple 芯片与 Intel Mac，最低系统版本仍为 macOS 14。
+Tunnelful `0.1.12` 继续支持 Apple 芯片与 Intel Mac，最低系统版本仍为 macOS 14。
 
 ## 本次变化
 
-- 正式安装包改用 Xcode 26 与 macOS 26 SDK 构建。Tunnelful 继续使用原生 SwiftUI `NavigationSplitView`；在 macOS 26 上，系统现在会呈现与官网截图一致的原生圆角悬浮侧栏。
-- 将发布工具链锁定到 Xcode 26，并在构建与安装包验证中检查 SDK 信息，避免正式包再次因回落到旧 SDK 而显示旧式侧栏。
-- 最低部署目标保持 macOS 14。macOS 14 与 macOS 15 会按各自系统提供的原生样式显示，功能与升级路径不变。
-
-本次没有重做侧栏或更改 Tunnel、配置、DNS、更新与进程控制逻辑；修复的是正式包与已验收源码、官网截图之间的构建工具链偏差。
+- 强制退出或崩溃时，由应用启动的 `cloudflared` 会随看门狗一起结束，避免留下孤儿进程。
+- 官方登录会在等待期间显示浏览器地址，并在失败或超时时保留脱敏后的提示。
+- 启动、重启和开机自启只接受当前配置中的 `tunnel` 或 `credentials-file` 对应的 Tunnel，不再猜测 `dev`。
+- 概览页在启动中也会显示停止与重新启动；发布页接受 `unix:` 与 `http_status` 源站。
+- 官网下载入口跟随仓库版本号；芯片检测冲突时不再误标“推荐”。
+- 启动子进程时额外剥离 `DYLD_*` / `LD_*`。Intel 更新条目声明 `sparkle:hardwareRequirements=x86_64`。
 
 ## 升级说明
 
-- 已安装 0.1.10：可在 Tunnelful 中选择“检查更新…”，也可手动下载对应芯片的 0.1.11 DMG 替换现有应用。
-- 已安装 0.1.9 或更早版本：旧版使用不同的 Bundle ID，应用内更新只会显示迁移说明。请先退出旧版；若启用了“登录 Mac 时自动打开”，请先在旧版设置中关闭它，再手动安装 0.1.11。其余偏好设置会自动迁移。
+- 已安装 0.1.10 或 0.1.11：可在 Tunnelful 中选择“检查更新…”，也可手动下载对应芯片的 0.1.12 DMG 替换现有应用。
+- 已安装 0.1.9 或更早版本：旧版使用不同的 Bundle ID，应用内更新只会显示迁移说明。请先退出旧版；若启用了“登录 Mac 时自动打开”，请先在旧版设置中关闭它，再手动安装 0.1.12。其余偏好设置会自动迁移。
 
-## 下载 Tunnelful 0.1.11
+## 下载 Tunnelful 0.1.12
 
-- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.11/Tunnelful-0.1.11-arm64.dmg)
-- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.11/Tunnelful-0.1.11-x86_64.dmg)
+- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.12/Tunnelful-0.1.12-arm64.dmg)
+- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.12/Tunnelful-0.1.12-x86_64.dmg)
 
 两个安装包都需要 macOS 14 或更高版本。不确定芯片类型时，可在苹果菜单的「关于本机」中查看“芯片”或“处理器”。
 
@@ -120,8 +121,8 @@ Tunnelful `0.1.11` 继续支持 Apple 芯片与 Intel Mac，最低系统版本�
 校验下载文件：
 
 ```bash
-shasum -a 256 -c Tunnelful-0.1.11-arm64.dmg.sha256
-shasum -a 256 -c Tunnelful-0.1.11-x86_64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.12-arm64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.12-x86_64.dmg.sha256
 ```
 
 ## 分发方式与首次打开
@@ -144,7 +145,8 @@ shasum -a 256 -c Tunnelful-0.1.11-x86_64.dmg.sha256
 - 日志脱敏属于防误操作保护；分享前仍需人工检查。
 - 构建与签名验证通过不等于真实 Cloudflare 账号联调或生产可用性验证通过。
 ]]></description>
-            <enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.11/Tunnelful-0.1.11-x86_64.dmg" length="1585586" type="application/octet-stream" sparkle:edSignature="4K7NWFJp4ApB1Dd/Kf08JvGjRgEdS2T9Qdd8vSikV39FkJqZlafSVo4d8uJOVPzV9e3ehUOo16RKFblN2rMLBA=="/>
+                        <sparkle:hardwareRequirements>x86_64</sparkle:hardwareRequirements>
+<enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.12/Tunnelful-0.1.12-x86_64.dmg" length="1614233" type="application/octet-stream" sparkle:edSignature="+1xGVEShZ13533UJaqlvM7Lt4imThiI3p37GV0cQuWX9IGW4b/M0jR9/D14FxA8KlaEVtN76rn24HdFdrhUFDQ=="/>
         </item>
     </channel>
 </rss>
