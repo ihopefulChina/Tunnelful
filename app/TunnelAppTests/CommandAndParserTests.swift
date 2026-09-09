@@ -454,6 +454,19 @@ final class CommandAndParserTests: XCTestCase {
         XCTAssertFalse(allDetails.contains(root.path))
     }
 
+    func testEnvironmentInspectorReportsInheritedProxyVariables() {
+        let report = EnvironmentInspector().inspect(
+            installation: nil,
+            configDocument: nil,
+            tunnelState: .notChecked,
+            launchAtLoginState: .disabled,
+            startTunnelOnLaunch: false,
+            processEnvironment: ["HTTPS_PROXY": "http://127.0.0.1:8080"]
+        )
+
+        XCTAssertTrue(report.items.contains { $0.id == "proxy" && $0.detail.contains("HTTPS_PROXY") })
+    }
+
     func testEnvironmentInspectorValidatesCertificateAndFollowsSymlinkTarget() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("tunnelful-certificate-\(UUID().uuidString)", isDirectory: true)
@@ -507,6 +520,11 @@ final class CommandAndParserTests: XCTestCase {
         XCTAssertEqual(processController.processState, .stopped)
 
         model.alertMessage = nil
+        model.startTunnel(named: "sample")
+        XCTAssertEqual(model.alertMessage, "请先导入与该 Tunnel 对应的本地配置，再启动。")
+        XCTAssertEqual(processController.processState, .stopped)
+
+        model.alertMessage = nil
         model.restartTunnel(named: "--token")
         XCTAssertEqual(model.alertMessage, "Tunnel 名称不能以连字符开头。")
         XCTAssertEqual(processController.processState, .stopped)
@@ -544,8 +562,48 @@ final class CommandAndParserTests: XCTestCase {
         }
         XCTAssertFalse(message.contains(secretURL))
         XCTAssertFalse(message.contains("secret-login-token"))
-        XCTAssertLessThan(message.count, 120)
         XCTAssertTrue(message.contains("7"))
+        XCTAssertTrue(message.contains("example.com") || message.contains("<已隐藏>"))
+    }
+
+    @MainActor
+    func testLoginSurfacesBrowserURLWhileWaiting() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tunnelful-login-url-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let loginURL = "https://dash.cloudflare.com/argotunnel?callback=https://login.example.com/abc"
+        let executable = root.appendingPathComponent("cloudflared")
+        let script = "#!/bin/sh\nprintf '%s\\n' '\(loginURL)' >&2\nexec /bin/sleep 30\n"
+        try Data(script.utf8).write(to: executable, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o700)],
+            ofItemAtPath: executable.path
+        )
+
+        let controller = CloudflaredLoginController(
+            inspector: EnvironmentInspector(homeDirectory: root),
+            timeout: 5,
+            terminationGracePeriod: 0.1
+        )
+        controller.start(executableURL: executable) {}
+
+        for _ in 0..<500 {
+            if controller.progressMessage != nil { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(controller.state, .running)
+        XCTAssertEqual(controller.progressMessage, loginURL)
+        XCTAssertTrue(controller.isRunning)
+
+        controller.cancel()
+        for _ in 0..<500 where controller.isRunning {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(controller.state, .cancelled)
+        XCTAssertNil(controller.progressMessage)
     }
 
     @MainActor
@@ -747,12 +805,19 @@ final class CommandAndParserTests: XCTestCase {
             ),
             "production"
         )
-        XCTAssertEqual(
+        XCTAssertNil(
             AppModel.resolvePreferredTunnelName(
                 configuredTunnel: nil,
                 tunnels: tunnels
+            )
+        )
+        XCTAssertEqual(
+            AppModel.resolvePreferredTunnelName(
+                configuredTunnel: nil,
+                credentialsFile: "$HOME/.cloudflared/production-id.json",
+                tunnels: tunnels
             ),
-            "dev"
+            "production"
         )
     }
 
@@ -791,12 +856,11 @@ final class CommandAndParserTests: XCTestCase {
                 tunnels: tunnels
             )
         )
-        XCTAssertEqual(
+        XCTAssertNil(
             AppModel.resolvePreferredTunnelName(
                 configuredTunnel: nil,
                 tunnels: tunnels
-            ),
-            "production"
+            )
         )
         XCTAssertNil(
             AppModel.resolvePreferredTunnelName(
@@ -810,8 +874,15 @@ final class CommandAndParserTests: XCTestCase {
             [{"id":"dev-id","name":"dev","deleted_at":"0001-01-01T00:00:00.000000000Z"}]
             """
         )
+        XCTAssertNil(
+            AppModel.resolvePreferredTunnelName(configuredTunnel: nil, tunnels: parsed)
+        )
         XCTAssertEqual(
-            AppModel.resolvePreferredTunnelName(configuredTunnel: nil, tunnels: parsed),
+            AppModel.resolvePreferredTunnelName(
+                configuredTunnel: nil,
+                credentialsFile: "~/.cloudflared/dev-id.json",
+                tunnels: parsed
+            ),
             "dev"
         )
     }
@@ -838,6 +909,15 @@ final class CommandAndParserTests: XCTestCase {
         XCTAssertFalse(result.contains("eyJabcdefghijkl"))
         XCTAssertFalse(result.contains(home))
         XCTAssertTrue(result.contains("<已隐藏>"))
+    }
+
+    func testSensitiveLogRedactionHidesUserInfoInURLs() {
+        let input = "Connecting https://user:password@example.com/path Authorization: Bearer keep-looking"
+        let result = SensitiveLogRedactor().redact(input)
+
+        XCTAssertFalse(result.contains("user:password"))
+        XCTAssertFalse(result.contains("password@example.com"))
+        XCTAssertTrue(result.contains("https://<已隐藏>@example.com/path"), result)
     }
 
     func testSensitiveLogRedactionHandlesStructuredAndQuotedSecrets() {
@@ -912,7 +992,9 @@ final class CommandAndParserTests: XCTestCase {
             "TUNNEL_ORIGIN_CERT": "/tmp/other-account.pem",
             "TUNNEL_TOKEN": "secret-token",
             "CF_API_TOKEN": "secret-api-token",
-            "CLOUDFLARED_EXPERIMENT": "enabled"
+            "CLOUDFLARED_EXPERIMENT": "enabled",
+            "DYLD_INSERT_LIBRARIES": "/tmp/example.dylib",
+            "LD_PRELOAD": "/tmp/example.so"
         ])
 
         let result = try await runner.run(executableURL: URL(fileURLWithPath: "/usr/bin/env"), arguments: [])
@@ -923,6 +1005,47 @@ final class CommandAndParserTests: XCTestCase {
         XCTAssertFalse(output.contains("TUNNEL_"))
         XCTAssertFalse(output.contains("CF_API_TOKEN"))
         XCTAssertFalse(output.contains("CLOUDFLARED_"))
+        XCTAssertFalse(output.contains("DYLD_INSERT_LIBRARIES"))
+        XCTAssertFalse(output.contains("LD_PRELOAD"))
+    }
+
+    func testProcessLifetimeSupervisorParsesWatchdogArguments() {
+        let launch = ProcessLifetimeSupervisor.parseArguments(
+            ["--parent-pid", "42", "--", "/usr/local/bin/cloudflared", "tunnel", "--no-autoupdate", "run", "dev"],
+            fallbackParentPID: 7
+        )
+
+        XCTAssertEqual(launch?.parentPID, 42)
+        XCTAssertEqual(launch?.executablePath, "/usr/local/bin/cloudflared")
+        XCTAssertEqual(launch?.arguments, ["tunnel", "--no-autoupdate", "run", "dev"])
+        XCTAssertNil(ProcessLifetimeSupervisor.parseArguments(["--parent-pid"], fallbackParentPID: 1))
+        XCTAssertNil(ProcessLifetimeSupervisor.parseArguments(["--"], fallbackParentPID: 1))
+
+        let unwrapped = ProcessLifetimeSupervisor.wrapIfNeeded(
+            executableURL: URL(fileURLWithPath: "/usr/local/bin/cloudflared"),
+            arguments: ["tunnel", "run", "dev"],
+            environment: ["HOME": "/tmp/example-home"]
+        )
+        XCTAssertEqual(unwrapped.executableURL.path, "/usr/local/bin/cloudflared")
+        XCTAssertEqual(unwrapped.arguments, ["tunnel", "run", "dev"])
+    }
+
+    func testProcessLineAccumulatorSplitsCompleteLines() {
+        var accumulator = ProcessLineAccumulator()
+        XCTAssertEqual(accumulator.append(Data("hello\nwor".utf8)), ["hello"])
+        XCTAssertEqual(accumulator.append(Data("ld\n".utf8)), ["world"])
+        XCTAssertEqual(accumulator.finish(), [])
+    }
+
+    func testOriginServiceKindAcceptsUnixAndHTTPStatus() {
+        XCTAssertEqual(OriginServiceKind.classify("unix:/tmp/example.sock"), .unix)
+        XCTAssertEqual(OriginServiceKind.classify("http_status:404"), .httpStatus)
+        XCTAssertEqual(OriginServiceKind.classify("not-a-url").isPublishable, false)
+        if case let .http(url) = OriginServiceKind.classify("http://127.0.0.1:3000") {
+            XCTAssertEqual(url.host, "127.0.0.1")
+        } else {
+            XCTFail("Expected an HTTP origin")
+        }
     }
 
 }

@@ -1,6 +1,6 @@
 # 发布流程
 
-本文供 Tunnelful 维护者使用。所有发布均应从干净的 `main` 分支生成。`0.1.11` 分别提供 Apple 芯片 `arm64` 与 Intel `x86_64` 单架构安装包，两者均采用 ad-hoc 签名且未公证。更新源由 Sparkle appcast 提供。
+本文供 Tunnelful 维护者使用。所有发布均应从干净的 `main` 分支生成。`0.1.12` 分别提供 Apple 芯片 `arm64` 与 Intel `x86_64` 单架构安装包，两者均采用 ad-hoc 签名且未公证。更新源由 Sparkle appcast 提供。
 
 ## 发布门槛
 
@@ -37,18 +37,18 @@ npm ci --prefix website
 npm run --prefix website lint
 npm run --prefix website build:pages
 bash scripts/build-release.sh
-bash scripts/verify-release.sh release/Tunnelful-0.1.11-arm64.dmg release/appcast.xml
-bash scripts/verify-release.sh release/Tunnelful-0.1.11-x86_64.dmg release/appcast.xml
+bash scripts/verify-release.sh release/Tunnelful-0.1.12-arm64.dmg release/appcast.xml
+bash scripts/verify-release.sh release/Tunnelful-0.1.12-x86_64.dmg release/appcast.xml
 ```
 
-`build-release.sh` 会先拒绝 Xcode 26 / macOS 26 SDK 之外的发布工具链，再从根目录 `VERSION` 读取完整发布版本，校验应用中的三段数字版本与 `TUNNELFUL_RELEASE_VERSION`，并把完整版本写入应用 Info.plist。随后分别构建仅含 `arm64` 与仅含 `x86_64` 的 Release 应用，削薄 Sparkle 等嵌入二进制，应用 ad-hoc 签名，生成两个 DMG、SHA-256 文件以及 Sparkle `appcast.xml`。生成更新源需要 `TUNNELFUL_SPARKLE_ED_PRIVATE_KEY`。GitHub 发版工作流必须传入该密钥；缺少密钥时不得发布。脚本不会访问开发者证书，不会上传产物，也不会执行 Apple 公证。
+`build-release.sh` 会先拒绝 Xcode 26 / macOS 26 SDK 之外的发布工具链，再从根目录 `VERSION` 读取完整发布版本，校验应用中的三段数字版本与 `TUNNELFUL_RELEASE_VERSION`，并把完整版本写入应用 Info.plist。随后分别构建仅含 `arm64` 与仅含 `x86_64` 的 Release 应用，削薄 Sparkle 等嵌入二进制，应用 ad-hoc 签名，生成两个 DMG、SHA-256 文件以及 Sparkle `appcast.xml`。生成更新源需要 `TUNNELFUL_SPARKLE_ED_PRIVATE_KEY`。GitHub 发版工作流必须传入该密钥；缺少密钥时不得发布。脚本不会访问开发者证书，不会上传产物，也不会执行 Apple 公证。生成 appcast 后会为每个架构条目写入对应的 `sparkle:hardwareRequirements`（`arm64` 或 `x86_64`），避免跨架构误更新。注入只插入或改写该标签，不会用 XML 解析器整文件回写，以免打乱 CDATA 与 Sparkle 属性。
 
 ## GitHub Release
 
 推送与产品版本一致的标签后，`.github/workflows/publish-app.yml` 会重新测试、构建并验证候选包，然后创建 GitHub Release。只有版本号包含预发布段时才会标记为预发布。当前版本对应标签为：
 
 ```text
-v0.1.11
+v0.1.12
 ```
 
 不要在自动发布运行成功前手工创建同名 Release，否则工作流会因名称冲突失败。发布完成后再次下载公开附件，核对 SHA-256，并确认 Release 页面醒目标明以下事实：
@@ -65,17 +65,17 @@ v0.1.11
 
 首次发布后需要验证首页与静态资源均能从仓库子路径访问，页面中的下载入口应指向当前 GitHub Release，不应链接本机文件或未公开附件。打开 `https://ihopefulchina.github.io/Tunnelful/appcast.xml`，确认其中的 `sparkle:shortVersionString` 与当前 `VERSION` 一致。
 
-0.1.11 发布后逐项验证：
+0.1.12 发布后逐项验证：
 
-- `https://github.com/ihopefulChina/Tunnelful/releases/latest` 跳转到 `v0.1.11`，且 `https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.11` 可访问。
-- `Tunnelful-0.1.11-arm64.dmg`、`Tunnelful-0.1.11-x86_64.dmg`、两份 `.sha256` 与 `appcast.xml` 五个 Release 附件均可下载。
+- `https://github.com/ihopefulChina/Tunnelful/releases/latest` 跳转到 `v0.1.12`，且 `https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.12` 可访问。
+- `Tunnelful-0.1.12-arm64.dmg`、`Tunnelful-0.1.12-x86_64.dmg`、两份 `.sha256` 与 `appcast.xml` 五个 Release 附件均可下载。
 - 两个 DMG 的公开下载字节数和 SHA-256 与 Release 附件一致，应用内 `CFBundleIdentifier` 均为 `app.ihopeful.Tunnelful`。
 - 两个 DMG 均由 Xcode 26 与 macOS 26 SDK 构建，最低部署目标为 macOS 14；不得只验证本地 Debug App 或工作流日志中的 runner 名称。
 - 在 macOS 26 上从最终 DMG 启动，确认分组侧栏呈现与官网现有 `tunnelful-window-v0.1.10.png` / `tunnelful-window-dark-v0.1.10.png` 基准一致的原生圆角悬浮样式；macOS 14 与 macOS 15 应保持可启动并采用各自系统样式。
-- `https://ihopefulchina.github.io/Tunnelful/` 展示 0.1.11 文案和上述分组侧栏基准，浅色与深色主题均使用对应图片，两个架构按钮指向 0.1.11 附件。
+- `https://ihopefulchina.github.io/Tunnelful/` 展示 0.1.12 文案和上述分组侧栏基准，浅色与深色主题均使用对应图片，两个架构按钮指向 0.1.12 附件。
 - `https://ihopefulchina.github.io/Tunnelful/tunnelful-window-v0.1.10.png` 与 `https://ihopefulchina.github.io/Tunnelful/tunnelful-window-dark-v0.1.10.png` 返回成功，桌面和移动端均无横向溢出。
-- 更新源的两个架构条目均为 0.1.11，Intel 内部版本为 28、Apple 芯片内部版本为 29；下载 URL、文件长度、EdDSA 签名和公开附件一致，两个条目都包含 `informationalUpdate` 与 `belowVersion=26`。
-- 在 0.1.9 Intel build 24 与 Apple 芯片 build 25 上分别检查更新：只能看到迁移说明和 Release 网页入口，不得下载或尝试安装 0.1.11；在 0.1.10 build 26/27 上应能正常发现并安装 0.1.11，在 0.1.11 build 28/29 上不得把当前版本误报为新版本。
+- 更新源的两个架构条目均为 0.1.12，Intel 内部版本为 30、Apple 芯片内部版本为 31；下载 URL、文件长度、EdDSA 签名和公开附件一致，两个条目都包含 `informationalUpdate` 与 `belowVersion=26`。Apple 芯片条目必须声明 `sparkle:hardwareRequirements=arm64`，Intel 条目必须声明 `sparkle:hardwareRequirements=x86_64`。
+- 在 0.1.9 Intel build 24 与 Apple 芯片 build 25 上分别检查更新：只能看到迁移说明和 Release 网页入口，不得下载或尝试安装 0.1.12；在 0.1.10 build 26/27 与 0.1.11 build 28/29 上应能正常发现并安装 0.1.12，在 0.1.12 build 30/31 上不得把当前版本误报为新版本。
 
 ## 正式签名留档
 

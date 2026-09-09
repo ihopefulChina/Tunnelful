@@ -48,7 +48,7 @@ struct ConfigValidationIssue: Identifiable, Equatable, Sendable {
         case error
     }
 
-    let id = UUID()
+    var id: String { "\(ruleID?.uuidString ?? "global")|\(severity.rawValue)|\(message)" }
     let severity: Severity
     let message: String
     let ruleID: UUID?
@@ -216,6 +216,12 @@ struct CloudflaredConfigParser: Sendable {
             .replacingOccurrences(of: "\r", with: "\n")
         var lines = normalizedContents.components(separatedBy: "\n")
         if lines.last == "" { lines.removeLast() }
+
+        if lines.contains(where: { line in
+            line.prefix(while: { $0 == " " || $0 == "\t" }).contains("\t")
+        }) {
+            throw ConfigParsingError.malformedIngress("配置使用了 Tab 缩进；请改用空格后再导入，以免保存时破坏结构。")
+        }
 
         guard let ingressIndex = lines.firstIndex(where: { line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)

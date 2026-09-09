@@ -31,7 +31,7 @@ struct CloudflaredClient: Sendable {
         )
         let successful = try result.requireSuccess()
         let output = successful.standardOutput.isEmpty ? successful.standardError : successful.standardOutput
-        return SensitiveLogRedactor().redact(output).trimmingCharacters(in: .whitespacesAndNewlines)
+        return SensitiveLogRedactor.shared.redact(output).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func matchingRule(configURL: URL, url: URL) async throws -> String {
@@ -41,7 +41,7 @@ struct CloudflaredClient: Sendable {
         )
         let successful = try result.requireSuccess()
         let output = successful.standardOutput.isEmpty ? successful.standardError : successful.standardOutput
-        return SensitiveLogRedactor().redact(output).trimmingCharacters(in: .whitespacesAndNewlines)
+        return SensitiveLogRedactor.shared.redact(output).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func dnsRoutePlan(tunnelName: String, hostname: String) -> DNSRoutePlan {
@@ -55,7 +55,7 @@ struct CloudflaredClient: Sendable {
         )
         let successful = try result.requireSuccess()
         let output = successful.standardOutput.isEmpty ? successful.standardError : successful.standardOutput
-        return SensitiveLogRedactor().redact(output).trimmingCharacters(in: .whitespacesAndNewlines)
+        return SensitiveLogRedactor.shared.redact(output).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func runArguments(

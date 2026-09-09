@@ -70,8 +70,13 @@ final class ProcessControllerTests: XCTestCase {
         )
 
         let finished = expectation(description: "crashed process observed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { finished.fulfill() }
-        wait(for: [finished], timeout: 1)
+        var observation: AnyCancellable?
+        observation = controller.$processState.sink { state in
+            guard case .failed = state else { return }
+            finished.fulfill()
+            observation?.cancel()
+        }
+        wait(for: [finished], timeout: 2)
 
         guard case .failed = controller.processState else {
             return XCTFail("An unexpected signal must be reported as a failure")
@@ -98,8 +103,13 @@ final class ProcessControllerTests: XCTestCase {
         try controller.stop()
 
         let stopped = expectation(description: "SIGKILL fallback completed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { stopped.fulfill() }
-        wait(for: [stopped], timeout: 1)
+        var observation: AnyCancellable?
+        observation = controller.$processState.sink { state in
+            guard state == .stopped else { return }
+            stopped.fulfill()
+            observation?.cancel()
+        }
+        wait(for: [stopped], timeout: 2)
 
         XCTAssertEqual(controller.processState, .stopped)
     }

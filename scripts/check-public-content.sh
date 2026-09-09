@@ -117,4 +117,27 @@ if [[ $failed -ne 0 ]]; then
   exit 1
 fi
 
+version="$(tr -d '[:space:]' < VERSION)"
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+  echo "VERSION 格式无效：$version" >&2
+  exit 1
+fi
+if ! grep -Fq "export const releaseVersion = '${version}';" website/app/release.ts; then
+  echo "website/app/release.ts 的 releaseVersion 必须与 VERSION ($version) 一致。" >&2
+  exit 1
+fi
+
+feed_url="$(awk -F ' = ' '/^INFOPLIST_KEY_SUFeedURL / { print $2 }' app/Config/Product.xcconfig | tr -d '[:space:]')"
+public_key="$(awk -F ' = ' '/^INFOPLIST_KEY_SUPublicEDKey / { print $2 }' app/Config/Product.xcconfig | tr -d '[:space:]')"
+if [[ -z "$feed_url" ]] || ! grep -Fq "\"$feed_url\"" app/TunnelApp/Core/AppUpdater.swift; then
+  echo "AppUpdater.feedURL 必须与 Product.xcconfig 的 SUFeedURL 一致。" >&2
+  exit 1
+fi
+if [[ -z "$public_key" ]] || ! grep -Fq "\"$public_key\"" app/TunnelApp/Core/AppUpdater.swift; then
+  echo "AppUpdater.publicEDKey 必须与 Product.xcconfig 的 SUPublicEDKey 一致。" >&2
+  exit 1
+fi
+
+python3 "$script_dir/inject-appcast-hardware.py" --self-test
+
 echo '公开内容检查通过。'

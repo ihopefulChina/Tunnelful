@@ -6,13 +6,14 @@ protocol CommandRunning: Sendable {
 }
 
 enum CloudflaredProcessEnvironment {
-    private static let blockedPrefixes = ["TUNNEL_", "CF_", "CLOUDFLARED_"]
+    private static let blockedPrefixes = ["TUNNEL_", "CF_", "CLOUDFLARED_", "DYLD_", "LD_"]
+    static let proxyKeys = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]
 
     static func sanitized(
         _ environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> [String: String] {
         environment.filter { key, _ in
-            !blockedPrefixes.contains(where: { key.hasPrefix($0) })
+            !blockedPrefixes.contains(where: { key.hasPrefix($0) || key.uppercased().hasPrefix($0) })
         }
     }
 }
@@ -227,6 +228,11 @@ private final class CommandExecution: @unchecked Sendable {
         timeoutWorkItem = nil
         lock.unlock()
 
+        if case let .success(commandResult) = result, commandResult.succeeded {
+            continuation?.resume(with: result)
+            return
+        }
+
         switch reason {
         case .cancelled:
             continuation?.resume(throwing: CloudflaredError.commandCancelled)
@@ -238,13 +244,19 @@ private final class CommandExecution: @unchecked Sendable {
     }
 }
 
-private final class LockedDataCapture: @unchecked Sendable {
+final class LockedDataCapture: @unchecked Sendable {
     private let lock = NSLock()
     private var data = Data()
 
     func set(_ value: Data) {
         lock.lock()
         data = value
+        lock.unlock()
+    }
+
+    func append(_ value: Data) {
+        lock.lock()
+        data.append(value)
         lock.unlock()
     }
 
@@ -256,7 +268,7 @@ private final class LockedDataCapture: @unchecked Sendable {
 }
 
 extension CommandResult {
-    func requireSuccess(redactor: LogRedacting = SensitiveLogRedactor()) throws -> CommandResult {
+    func requireSuccess(redactor: LogRedacting = SensitiveLogRedactor.shared) throws -> CommandResult {
         guard succeeded else {
             let rawMessage = standardError.isEmpty ? standardOutput : standardError
             throw CloudflaredError.commandFailed(

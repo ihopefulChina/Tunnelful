@@ -142,6 +142,8 @@ a { color: inherit; text-decoration: none; }
 .download-options .button { min-width: 206px; flex-direction: column; gap: 2px; padding-block: 9px; }
 .download-options small { font-size: 12px; font-weight: 520; opacity: .72; }
 .architecture-status { margin: 13px 0 0; color: var(--secondary); font-size: 13px; }
+.checksums { margin: 8px 0 0; color: var(--tertiary); font-size: 12px; }
+.checksums a { text-decoration: underline; text-underline-offset: 2px; }
 .compatibility { margin: 5px 0 0; color: var(--tertiary); font-size: 12px; line-height: 1.55; }
 .installer-note { max-width: 560px; margin: 8px auto 0; color: var(--tertiary); font-size: 12px; line-height: 1.55; }
 .migration-note {

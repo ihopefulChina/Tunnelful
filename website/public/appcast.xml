@@ -84,6 +84,7 @@ shasum -a 256 -c Tunnelful-0.1.11-x86_64.dmg.sha256
             <sparkle:version>28</sparkle:version>
             <sparkle:shortVersionString>0.1.11</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>x86_64</sparkle:hardwareRequirements>
             <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.11
 
 Tunnelful `0.1.11` 继续支持 Apple 芯片与 Intel Mac，最低系统版本仍为 macOS 14。

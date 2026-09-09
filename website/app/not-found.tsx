@@ -1,6 +1,11 @@
+import type { Metadata } from 'next';
 import Image from 'next/image';
 
 const basePath = process.env.TUNNELFUL_PAGES === '1' ? '/Tunnelful' : '';
+
+export const metadata: Metadata = {
+  title: '页面不存在 — Tunnelful',
+};
 
 export default function NotFound() {
   return (

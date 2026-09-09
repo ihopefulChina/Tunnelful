@@ -5,6 +5,7 @@ protocol LogRedacting: Sendable {
 }
 
 struct SensitiveLogRedactor: LogRedacting {
+    static let shared = SensitiveLogRedactor()
     private struct Rule: @unchecked Sendable {
         let expression: NSRegularExpression
         let template: String
@@ -19,6 +20,14 @@ struct SensitiveLogRedactor: LogRedacting {
         let definitions: [(String, String)] = [
             (
                 #"(?im)^([ \t]*(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|cf-access-client-secret)[ \t]*:[ \t]*)[^\r\n]*"#,
+                "$1<已隐藏>"
+            ),
+            (
+                #"(?i)([a-z][a-z0-9+.-]*://)([^/\s:@]+):([^/\s@]+)@"#,
+                "$1<已隐藏>@"
+            ),
+            (
+                #"(?i)([?&](?:cf-access-token|cf_access_token|id_token|refresh_token)=)([^&\s]+)"#,
                 "$1<已隐藏>"
             ),
             (

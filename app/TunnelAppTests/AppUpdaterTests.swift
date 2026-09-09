@@ -9,6 +9,16 @@ final class AppUpdaterTests: XCTestCase {
             "https://ihopefulchina.github.io/Tunnelful/appcast.xml"
         )
         XCTAssertEqual(AppUpdater.publicEDKey, "0hyxOLR9zBFNvSdozSz0hALE/wHrk72Vsad4KxqpyM0=")
+
+        guard Bundle.main.bundleIdentifier == AppIdentity.bundleIdentifier else { return }
+        XCTAssertEqual(
+            Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
+            AppUpdater.feedURL.absoluteString
+        )
+        XCTAssertEqual(
+            Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String,
+            AppUpdater.publicEDKey
+        )
     }
 
     func testAutomaticCheckPreferenceIsForwardedToTheUpdaterDriver() {

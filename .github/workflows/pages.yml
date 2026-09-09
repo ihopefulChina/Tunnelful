@@ -34,6 +34,8 @@ jobs:
     steps:
       - name: 检出仓库
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
       - name: 确认当前版本已经发布
         id: release
         shell: bash
@@ -58,7 +60,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           release_json="$(gh release view "v$version" --json isDraft,assets 2>/dev/null || true)"
           if [[ -z "$release_json" ]]; then
-            defer_or_fail "v$version 尚未发布，官网保持当前线上版本，等待发布工作流成功后再切版。"
+            defer_or_fail "v$version 尚未发布，官网使用仓库内更新源继续部署。"
           fi
           if [[ "$(jq -r '.isDraft' <<< "$release_json")" != 'false' ]]; then
             defer_or_fail "v$version 仍是草稿 Release，官网暂不切版。"
@@ -72,7 +74,7 @@ jobs:
           )
           for asset in "${required_assets[@]}"; do
             if ! jq -e --arg asset "$asset" '.assets | any(.name == $asset and .state == "uploaded")' <<< "$release_json" >/dev/null; then
-              defer_or_fail "v$version 缺少已上传的发布资产：$asset；官网暂不切版。"
+              defer_or_fail "v$version 缺少已上传的发布资产：$asset；官网使用仓库内更新源继续部署。"
             fi
           done
           echo 'ready=true' >> "$GITHUB_OUTPUT"
@@ -80,31 +82,40 @@ jobs:
   build:
     name: 构建网站
     needs: release-state
-    if: needs.release-state.outputs.ready == 'true'
     runs-on: ubuntu-latest
     env:
       TUNNELFUL_PRIVATE_SCAN_PATTERN: ${{ secrets.TUNNELFUL_PRIVATE_SCAN_PATTERN }}
     steps:
       - name: 检出仓库
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
       - name: 配置 Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: website/package-lock.json
-      - name: 使用对应 GitHub Release 的 Sparkle 更新源
+      - name: 选择 Sparkle 更新源
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_READY: ${{ needs.release-state.outputs.ready }}
+          VERSION: ${{ needs.release-state.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/tunnelful-appcast website/public
-          gh release download "v${{ needs.release-state.outputs.version }}" \
-            --pattern 'appcast.xml' \
-            --dir /tmp/tunnelful-appcast
-          cp /tmp/tunnelful-appcast/appcast.xml website/public/appcast.xml
-          echo '已使用对应 GitHub Release 中的 Sparkle 更新源。'
+          if [[ "$RELEASE_READY" == 'true' ]]; then
+            gh release download "v$VERSION" \
+              --pattern 'appcast.xml' \
+              --dir /tmp/tunnelful-appcast
+            cp /tmp/tunnelful-appcast/appcast.xml website/public/appcast.xml
+            echo '已使用对应 GitHub Release 中的 Sparkle 更新源。'
+          else
+            cp appcast.xml website/public/appcast.xml
+            echo 'Release 尚未就绪，已使用仓库内 Sparkle 更新源。'
+          fi
       - name: 确认更新源包含当前版本
+        if: needs.release-state.outputs.ready == 'true'
         run: |
           set -euo pipefail
           version="$(tr -d '[:space:]' < VERSION)"
@@ -134,7 +145,7 @@ jobs:
 
   deploy:
     name: 部署网站
-    if: needs.release-state.outputs.ready == 'true' && needs.build.result == 'success'
+    if: needs.build.result == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -448,8 +448,8 @@ if [[ -n "$appcast_path" ]]; then
       echo 'Apple 芯片条目必须声明 sparkle:hardwareRequirements=arm64。' >&2
       exit 1
     fi
-  elif [[ -n "$hardware_requirements" ]]; then
-    echo 'Intel 条目不应声明 hardwareRequirements。' >&2
+  elif [[ "$hardware_requirements_normalized" != "x86_64" ]]; then
+    echo 'Intel 条目必须声明 sparkle:hardwareRequirements=x86_64。' >&2
     exit 1
   fi
   if [[ -n "${TUNNELFUL_SPARKLE_ED_PRIVATE_KEY:-}" || -n "${TUNNELFUL_SPARKLE_ED_KEY_FILE:-}" ]]; then
@@ -457,11 +457,8 @@ if [[ -n "$appcast_path" ]]; then
     if [[ -z "$sign_update" && -x "$project_root/release/.sparkle-bin/sign_update" ]]; then
       sign_update="$project_root/release/.sparkle-bin/sign_update"
     fi
-    if [[ -z "$sign_update" ]]; then
-      sign_update="$(find /tmp/tunnelful-sparkle-2.9.2 "$project_root" -name sign_update -type f 2>/dev/null | head -n 1)"
-    fi
     if [[ ! -x "$sign_update" ]]; then
-      echo '无法验证 Sparkle 签名：找不到 sign_update。' >&2
+      echo '无法验证 Sparkle 签名：请设置 TUNNELFUL_SPARKLE_SIGN_UPDATE，或提供 release/.sparkle-bin/sign_update。' >&2
       exit 1
     fi
     sparkle_key_file="$(mktemp -t tunnelful-sparkle-verify)"

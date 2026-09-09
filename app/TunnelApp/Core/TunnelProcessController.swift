@@ -1,5 +1,4 @@
 import Combine
-import Darwin
 import Foundation
 
 /// Interprets cloudflared logs into an Edge status.
@@ -239,9 +238,10 @@ final class TunnelProcessController: ObservableObject {
     private var shutdownCompletion: (() -> Void)?
     private var expectedTerminationPID: Int32?
     private var isShuttingDown = false
+    private var killWorkItem: DispatchWorkItem?
 
     init(
-        redactor: any LogRedacting = SensitiveLogRedactor(),
+        redactor: any LogRedacting = SensitiveLogRedactor.shared,
         terminationGracePeriod: TimeInterval = 5
     ) {
         self.redactor = redactor
@@ -273,9 +273,14 @@ final class TunnelProcessController: ObservableObject {
             fileHandle: standardError.fileHandleForReading,
             label: "\(AppIdentity.bundleIdentifier).logs.stderr"
         )
-        newProcess.executableURL = executableURL
-        newProcess.arguments = arguments
-        newProcess.environment = CloudflaredProcessEnvironment.sanitized()
+        let launch = ProcessLifetimeSupervisor.wrapIfNeeded(
+            executableURL: executableURL,
+            arguments: arguments,
+            environment: CloudflaredProcessEnvironment.sanitized()
+        )
+        newProcess.executableURL = launch.executableURL
+        newProcess.arguments = launch.arguments
+        newProcess.environment = launch.environment
         newProcess.standardInput = FileHandle.nullDevice
         newProcess.standardOutput = standardOutput
         newProcess.standardError = standardError
@@ -381,15 +386,17 @@ final class TunnelProcessController: ObservableObject {
 
     private func requestTermination(of ownedProcess: Process) {
         expectedTerminationPID = ownedProcess.processIdentifier
+        killWorkItem?.cancel()
         ownedProcess.terminate()
-        DispatchQueue.main.asyncAfter(deadline: .now() + terminationGracePeriod) { [weak self, weak ownedProcess] in
+        let item = DispatchWorkItem { [weak self, weak ownedProcess] in
             guard let self,
                   let ownedProcess,
                   self.process === ownedProcess,
                   ownedProcess.isRunning else { return }
-            // This PID comes from the exact Process instance created by the app.
-            kill(ownedProcess.processIdentifier, SIGKILL)
+            ProcessLifetimeSupervisor.killSupervisedProcessTree(ownedProcess.processIdentifier)
         }
+        killWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + terminationGracePeriod, execute: item)
     }
 
     private func startReading(
@@ -419,6 +426,8 @@ final class TunnelProcessController: ObservableObject {
         if wasExpectedTermination {
             expectedTerminationPID = nil
         }
+        killWorkItem?.cancel()
+        killWorkItem = nil
         terminatedProcess.terminationHandler = nil
         process = nil
         managedTunnelName = nil
@@ -508,89 +517,5 @@ final class TunnelProcessController: ObservableObject {
 private extension String {
     var nilIfEmpty: String? {
         isEmpty ? nil : self
-    }
-}
-
-private final class ProcessPipeReader: @unchecked Sendable {
-    private let fileHandle: FileHandle
-    private let queue: DispatchQueue
-
-    init(fileHandle: FileHandle, label: String) {
-        self.fileHandle = fileHandle
-        queue = DispatchQueue(label: label, qos: .utility)
-    }
-
-    func start(
-        onLines: @escaping @Sendable ([String]) -> Void,
-        onFinished: @escaping @Sendable () -> Void
-    ) {
-        queue.async { [self] in
-            let descriptor = fileHandle.fileDescriptor
-            var accumulator = ProcessLineAccumulator()
-            var buffer = [UInt8](repeating: 0, count: 4_096)
-
-            defer {
-                let trailingLines = accumulator.finish()
-                if !trailingLines.isEmpty {
-                    onLines(trailingLines)
-                }
-                try? fileHandle.close()
-                onFinished()
-            }
-
-            while true {
-                let bytesRead = buffer.withUnsafeMutableBytes { bytes in
-                    Darwin.read(descriptor, bytes.baseAddress, bytes.count)
-                }
-
-                if bytesRead > 0 {
-                    let lines = accumulator.append(Data(buffer.prefix(bytesRead)))
-                    if !lines.isEmpty {
-                        onLines(lines)
-                    }
-                } else if bytesRead == 0 {
-                    return
-                } else if errno != EINTR {
-                    return
-                }
-            }
-        }
-    }
-}
-
-private struct ProcessLineAccumulator {
-    private var bufferedData = Data()
-
-    mutating func append(_ data: Data) -> [String] {
-        append(data, flushRemainder: false)
-    }
-
-    mutating func finish() -> [String] {
-        append(Data(), flushRemainder: true)
-    }
-
-    private mutating func append(_ data: Data, flushRemainder: Bool) -> [String] {
-        if !data.isEmpty {
-            bufferedData.append(data)
-        }
-
-        var lines: [String] = []
-        while let newlineIndex = bufferedData.firstIndex(of: 0x0A) {
-            var lineData = bufferedData[..<newlineIndex]
-            if lineData.last == 0x0D {
-                lineData = lineData.dropLast()
-            }
-            lines.append(String(decoding: lineData, as: UTF8.self))
-            bufferedData.removeSubrange(...newlineIndex)
-        }
-
-        if flushRemainder, !bufferedData.isEmpty {
-            if bufferedData.last == 0x0D {
-                bufferedData.removeLast()
-            }
-            lines.append(String(decoding: bufferedData, as: UTF8.self))
-            bufferedData.removeAll(keepingCapacity: false)
-        }
-        return lines
     }
 }

@@ -418,7 +418,7 @@ struct CloudflaredConfigurationStore: @unchecked Sendable {
             ".\(destinationURL.lastPathComponent).\(UUID().uuidString).tmp"
         )
         let descriptor = stagingURL.path.withCString {
-            open($0, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR)
+            open($0, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, S_IRUSR | S_IWUSR)
         }
         guard descriptor >= 0 else {
             throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))

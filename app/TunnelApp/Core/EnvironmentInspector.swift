@@ -50,7 +50,8 @@ struct EnvironmentInspector: @unchecked Sendable {
         configDocument: CloudflaredConfigDocument?,
         tunnelState: TunnelDiscoveryState,
         launchAtLoginState: LaunchAtLoginState,
-        startTunnelOnLaunch: Bool
+        startTunnelOnLaunch: Bool,
+        processEnvironment: [String: String] = ProcessInfo.processInfo.environment
     ) -> EnvironmentReport {
         let certificate = firstValidCertificate(in: certificateCandidates)
         let hasInvalidCertificate = certificate == nil && certificateCandidates.contains(where: itemExists(at:))
@@ -195,6 +196,16 @@ struct EnvironmentInspector: @unchecked Sendable {
             detail: launchDetail,
             state: launchState
         ))
+
+        let proxyKeys = CloudflaredProcessEnvironment.proxyKeys.filter { processEnvironment[$0] != nil }
+        if !proxyKeys.isEmpty {
+            items.append(EnvironmentCheckItem(
+                id: "proxy",
+                title: "代理环境变量",
+                detail: "检测到 \(proxyKeys.sorted().joined(separator: "、"))。cloudflared 会继承这些变量；账户与 DNS 请求可能经过该代理。",
+                state: .information
+            ))
+        }
 
         return EnvironmentReport(
             items: items,

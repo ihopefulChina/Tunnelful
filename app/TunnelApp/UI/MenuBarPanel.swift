@@ -127,7 +127,8 @@ struct MenuBarPanel: View {
     }
 
     private var canControlTunnel: Bool {
-        model.installation != nil && model.preferredTunnelName != nil
+        guard let name = model.preferredTunnelName else { return false }
+        return model.canStartTunnel(named: name)
     }
 
     private var canRestartTunnel: Bool {

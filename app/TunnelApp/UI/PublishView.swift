@@ -121,6 +121,7 @@ struct PublishView: View {
                     text: $service,
                     prompt: "http://127.0.0.1:3000",
                     error: visibleServiceError,
+                    helper: "支持 HTTP/HTTPS、unix: 路径或 http_status。只有 HTTP(S) 可以预检。",
                     contentType: .URL
                 )
 
@@ -138,7 +139,7 @@ struct PublishView: View {
                 } label: {
                     Label("检查源站", systemImage: "waveform.path.ecg")
                 }
-                .disabled(serviceError != nil || service.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!OriginServiceKind.classify(service).supportsOriginProbe)
 
                 Label(publishOriginState.label, systemImage: StatusAppearance.originSymbol(publishOriginState))
                     .foregroundStyle(StatusAppearance.originTint(publishOriginState))
@@ -211,8 +212,8 @@ struct PublishView: View {
                             .help("使用当前命名 Tunnel 重新启动托管进程")
                     } else {
                         Button("启动 Tunnel") { model.startTunnel(named: tunnelName) }
-                            .disabled(model.pendingDNSPlan == nil)
-                            .help(model.pendingDNSPlan == nil ? "请先保存本地配置" : "启动当前命名 Tunnel")
+                            .disabled(model.pendingDNSPlan == nil || !model.canStartTunnel(named: tunnelName))
+                            .help(startTunnelHelp)
                     }
                 }
 
@@ -382,12 +383,18 @@ struct PublishView: View {
     private var serviceError: String? {
         let value = service.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.isEmpty { return nil }
-        guard let url = URL(string: value),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "http" || scheme == "https" else {
-            return "请输入包含 HTTP 或 HTTPS 协议的源站 URL。"
+        guard OriginServiceKind.classify(value).isPublishable else {
+            return "请输入 HTTP/HTTPS URL、unix: 路径或 http_status 源站。"
         }
         return nil
+    }
+
+    private var startTunnelHelp: String {
+        if model.pendingDNSPlan == nil { return "请先保存本地配置" }
+        if !model.canStartTunnel(named: tunnelName) {
+            return "请先导入与该 Tunnel 对应的本地配置"
+        }
+        return "启动当前命名 Tunnel"
     }
 
     private var visibleTunnelError: String? {

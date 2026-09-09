@@ -95,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var loginController: CloudflaredLoginController?
     weak var model: AppModel?
     var isAwaitingProcessShutdown = false
-    var terminationRiskConfirmationOverride: ((Bool, Bool) -> Bool)?
+    var terminationRiskConfirmationOverride: ((TerminationRisks) -> Bool)?
     private var didStartBootstrap = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -200,50 +200,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var requiresTerminationConfirmation: Bool {
-        model?.hasUnsavedConfigurationDraft == true || model?.isRoutingDNS == true
+        model?.terminationRisks.needsConfirmation == true
     }
 
     private func confirmTerminationRisks() -> Bool {
         guard let model else { return true }
 
-        let hasUnsavedDraft = model.hasUnsavedConfigurationDraft
-        let isRoutingDNS = model.isRoutingDNS
+        let risks = model.terminationRisks
         if let terminationRiskConfirmationOverride {
-            return terminationRiskConfirmationOverride(hasUnsavedDraft, isRoutingDNS)
+            return terminationRiskConfirmationOverride(risks)
         }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = terminationConfirmationTitle(
-            hasUnsavedDraft: hasUnsavedDraft,
-            isRoutingDNS: isRoutingDNS
-        )
+        alert.messageText = terminationConfirmationTitle(risks)
 
         var details: [String] = []
-        if hasUnsavedDraft {
+        if risks.hasUnsavedDraft {
             details.append("Ingress 配置中有尚未保存的更改，退出后这些更改会丢失。")
         }
-        if isRoutingDNS {
+        if risks.isApplyingConfiguration {
+            details.append("正在校验并保存配置。退出会中断写入；请先等待保存完成，或确认可以放弃本次保存。")
+        }
+        if risks.isRoutingDNS {
             details.append(
                 "Cloudflare DNS 路由仍在配置。退出会停止本地等待，但远端结果未知且可能已经生效；退出后请先到 Cloudflare DNS 核对记录。"
             )
         }
         alert.informativeText = details.joined(separator: "\n\n")
         alert.addButton(withTitle: "取消退出")
-        alert.addButton(withTitle: hasUnsavedDraft ? "放弃更改并退出" : "仍然退出")
+        alert.addButton(withTitle: risks.hasUnsavedDraft ? "放弃更改并退出" : "仍然退出")
 
         ApplicationActivation.showSystemMenu()
         return alert.runModal() == .alertSecondButtonReturn
     }
 
-    private func terminationConfirmationTitle(
-        hasUnsavedDraft: Bool,
-        isRoutingDNS: Bool
-    ) -> String {
-        switch (hasUnsavedDraft, isRoutingDNS) {
-        case (true, true): return "放弃更改并中断 DNS 配置？"
-        case (true, false): return "放弃未保存的更改并退出？"
-        case (false, true): return "DNS 配置尚未结束，仍然退出？"
-        case (false, false): return "退出 Tunnelful？"
+    private func terminationConfirmationTitle(_ risks: TerminationRisks) -> String {
+        switch (risks.hasUnsavedDraft, risks.isRoutingDNS, risks.isApplyingConfiguration) {
+        case (true, true, _): return "放弃更改并中断 DNS 配置？"
+        case (true, false, true): return "放弃更改并中断配置保存？"
+        case (true, false, false): return "放弃未保存的更改并退出？"
+        case (false, true, _): return "DNS 配置尚未结束，仍然退出？"
+        case (false, false, true): return "配置仍在保存，仍然退出？"
+        case (false, false, false): return "退出 Tunnelful？"
         }
     }
 
@@ -294,6 +292,7 @@ struct TunnelAppMain: App {
     @StateObject private var updater: AppUpdater
 
     init() {
+        ProcessLifetimeSupervisor.takeOverIfRequested()
         let environment = ProcessInfo.processInfo.environment
         let isReleaseSmokeTest = AppDomainMigration.isReleaseSmokeTest(environment: environment)
         let userDefaults = AppDomainMigration.applicationUserDefaults(environment: environment)
@@ -331,7 +330,6 @@ struct TunnelAppMain: App {
                 .environmentObject(processController)
                 .environmentObject(updater)
                 .frame(minWidth: 980, minHeight: 680)
-                .task { await model.bootstrap() }
         }
         .defaultSize(width: 1_120, height: 780)
         .windowToolbarStyle(.unified)

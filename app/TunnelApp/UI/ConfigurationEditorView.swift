@@ -407,7 +407,8 @@ struct ConfigurationEditorView: View {
             },
             set: { value in
                 updateRule(ruleID) { rule in
-                    rule[keyPath: keyPath] = value
+                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    rule[keyPath: keyPath] = trimmed.isEmpty ? nil : trimmed
                 }
             }
         )

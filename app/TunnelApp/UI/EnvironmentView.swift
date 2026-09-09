@@ -193,6 +193,9 @@ private struct EnvironmentContent: View {
                 ? "已发现账户凭据；可主动验证账户与网络是否可用。"
                 : "登录在 Cloudflare 官方网页完成，Tunnelful 不接触密码。"
         case .running:
+            if let loginURL = loginController.progressMessage, !loginURL.isEmpty {
+                return "请在浏览器打开 \(loginURL) 完成登录；等待期间可以取消。"
+            }
             return "请在浏览器完成登录；等待期间可以取消。"
         case .succeeded:
             return "官方登录已完成，正在刷新账户状态。"

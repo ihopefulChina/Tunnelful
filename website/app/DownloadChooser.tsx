@@ -2,8 +2,15 @@
 
 import { useEffect, useState } from 'react';
 
+import {
+  armChecksumURL,
+  armDownloadURL,
+  intelChecksumURL,
+  intelDownloadURL,
+} from './release';
+
 type Architecture = 'arm64' | 'x86_64' | 'unknown';
-type DetectionSource = 'pending' | 'ua-ch' | 'webgl' | 'unknown' | 'non-mac';
+type DetectionSource = 'pending' | 'ua-ch' | 'webgl' | 'unknown' | 'non-mac' | 'conflict';
 
 type ArchitectureDetection = {
   architecture: Architecture;
@@ -18,11 +25,6 @@ type NavigatorWithUserAgentData = Navigator & {
     ) => Promise<{ architecture?: string; platform?: string }>;
   };
 };
-
-const armDownloadURL =
-  'https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.11/Tunnelful-0.1.11-arm64.dmg';
-const intelDownloadURL =
-  'https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.11/Tunnelful-0.1.11-x86_64.dmg';
 
 function normalizedArchitecture(value?: string): Architecture {
   const architecture = value?.toLowerCase();
@@ -69,20 +71,28 @@ async function detectArchitecture(): Promise<ArchitectureDetection> {
     return { architecture: 'unknown', source: 'non-mac' };
   }
 
+  let hintedArchitecture: Architecture = 'unknown';
   try {
     const values = await navigatorWithHints.userAgentData?.getHighEntropyValues?.([
       'architecture',
       'platform',
     ]);
-    const hintedArchitecture = normalizedArchitecture(values?.architecture);
-    if (hintedArchitecture !== 'unknown') {
-      return { architecture: hintedArchitecture, source: 'ua-ch' };
-    }
+    hintedArchitecture = normalizedArchitecture(values?.architecture);
   } catch {
     // Continue with the local graphics capability check.
   }
 
   const graphicsArchitecture = architectureFromWebGL();
+  if (
+    hintedArchitecture !== 'unknown' &&
+    graphicsArchitecture !== 'unknown' &&
+    hintedArchitecture !== graphicsArchitecture
+  ) {
+    return { architecture: 'unknown', source: 'conflict' };
+  }
+  if (hintedArchitecture !== 'unknown') {
+    return { architecture: hintedArchitecture, source: 'ua-ch' };
+  }
   return graphicsArchitecture === 'unknown'
     ? { architecture: 'unknown', source: 'unknown' }
     : { architecture: graphicsArchitecture, source: 'webgl' };
@@ -106,37 +116,45 @@ export default function DownloadChooser() {
   }, []);
 
   const { architecture, source } = detection;
+  const recommendedArchitecture = source === 'conflict' ? 'unknown' : architecture;
   const detectionMessage = source === 'pending'
     ? '正在检测此 Mac 的芯片…'
     : source === 'non-mac'
       ? '请在 Mac 上下载，或按目标 Mac 的芯片手动选择。'
-      : architecture === 'arm64'
-        ? `${source === 'webgl' ? '根据图形硬件推测' : '浏览器报告'}这台 Mac 使用 Apple 芯片，推荐 Apple 芯片版。`
-        : architecture === 'x86_64'
-          ? `${source === 'webgl' ? '根据图形硬件推测' : '浏览器报告'}这台 Mac 使用 Intel 处理器，推荐 Intel 版。`
-          : '浏览器未能可靠识别芯片，请在“ → 关于本机”中确认。';
+      : source === 'conflict'
+        ? '浏览器报告的芯片与图形硬件不一致，可能运行在 Rosetta 下。请在“ → 关于本机”中确认后再选择安装包。'
+        : architecture === 'arm64'
+          ? `${source === 'webgl' ? '根据图形硬件推测' : '浏览器报告'}这台 Mac 使用 Apple 芯片，推荐 Apple 芯片版。`
+          : architecture === 'x86_64'
+            ? `${source === 'webgl' ? '根据图形硬件推测' : '浏览器报告'}这台 Mac 使用 Intel 处理器，推荐 Intel 版。`
+            : '浏览器未能可靠识别芯片，请在“ → 关于本机”中确认。';
 
   return (
     <div className="download-chooser" id="downloads">
       <fieldset className="download-options">
         <legend className="visually-hidden">选择 Tunnelful 下载版本</legend>
         <a
-          className={`button ${architecture === 'arm64' ? 'button-primary' : 'button-secondary'}`}
+          className={`button ${recommendedArchitecture === 'arm64' ? 'button-primary' : 'button-secondary'}`}
           href={armDownloadURL}
         >
           <span>下载 Apple 芯片版</span>
-          <small>arm64{architecture === 'arm64' ? ' · 推荐' : ''}</small>
+          <small>arm64{recommendedArchitecture === 'arm64' ? ' · 推荐' : ''}</small>
         </a>
         <a
-          className={`button ${architecture === 'x86_64' ? 'button-primary' : 'button-secondary'}`}
+          className={`button ${recommendedArchitecture === 'x86_64' ? 'button-primary' : 'button-secondary'}`}
           href={intelDownloadURL}
         >
           <span>下载 Intel 版</span>
-          <small>x86_64{architecture === 'x86_64' ? ' · 推荐' : ''}</small>
+          <small>x86_64{recommendedArchitecture === 'x86_64' ? ' · 推荐' : ''}</small>
         </a>
       </fieldset>
       <p className="architecture-status" aria-live="polite">
         {detectionMessage}
+      </p>
+      <p className="checksums">
+        <a href={armChecksumURL}>Apple 芯片 SHA-256</a>
+        {' · '}
+        <a href={intelChecksumURL}>Intel SHA-256</a>
       </p>
       <p className="compatibility">macOS 14 及更高版本</p>
       <p className="installer-note">
@@ -144,7 +162,7 @@ export default function DownloadChooser() {
       </p>
       <p className="migration-note">
         <strong>从 0.1.9 或更早版本升级：</strong>
-        旧版更新窗口只会引导前往 Release 页面。若启用了登录项，请先在旧版设置中关闭；退出并手动安装 0.1.11 后，再按需重新开启。其余偏好设置会自动迁移。0.1.10 可直接使用应用内更新。
+        旧版更新窗口只会引导前往 Release 页面。若启用了登录项，请先在旧版设置中关闭；退出并手动安装 0.1.12 后，再按需重新开启。其余偏好设置会自动迁移。0.1.10 与 0.1.11 可直接使用应用内更新。
       </p>
     </div>
   );

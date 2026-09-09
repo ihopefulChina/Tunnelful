@@ -376,6 +376,25 @@ final class ConfigurationTests: XCTestCase {
         }
     }
 
+    func testTabIndentedIngressIsRejected() {
+        let input = "ingress:\n\t- service: http_status:404\n"
+
+        XCTAssertThrowsError(try CloudflaredConfigParser().parse(contents: input)) { error in
+            guard case let ConfigParsingError.malformedIngress(message) = error else {
+                return XCTFail("unexpected error: \(error)")
+            }
+            XCTAssertTrue(message.contains("Tab"))
+        }
+    }
+
+    func testValidationIssueIdentifiersStayStableAcrossRenders() throws {
+        let document = try CloudflaredConfigParser().parse(contents: sample)
+        let first = document.validationIssues()
+        let second = document.validationIssues()
+        XCTAssertEqual(first.map(\.id), second.map(\.id))
+        XCTAssertFalse(first.contains { $0.id.isEmpty })
+    }
+
     func testDoubleQuotedYAMLEscapesKeepTheirMeaningAfterRoundTrip() throws {
         let input = #"""
         ingress:
@@ -717,7 +736,7 @@ final class ConfigurationTests: XCTestCase {
     }
 
     @MainActor
-    func testEditingOrSavingConfigurationInvalidatesPendingDNSPlan() async throws {
+    func testSavingConfigurationInvalidatesPendingDNSPlanButDraftEditsDoNot() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -758,23 +777,17 @@ final class ConfigurationTests: XCTestCase {
         editedDraft.upsert(hostname: "draft.example.com", service: "http://127.0.0.1:4000")
         model.configurationDraft = editedDraft
 
-        XCTAssertNil(model.pendingDNSPlan)
-        await model.routeDNS(draftPlan)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: markerURL.path))
+        XCTAssertEqual(model.pendingDNSPlan, draftPlan)
 
         model.discardConfigurationDraft()
-        await model.applyLocalPublish(
-            tunnelName: "sample-tunnel-id",
-            hostname: "saved.example.com",
-            service: "http://127.0.0.1:5000"
-        )
-        let savePlan = try XCTUnwrap(model.pendingDNSPlan)
+        XCTAssertEqual(model.pendingDNSPlan, draftPlan)
+
         var savedDocument = try XCTUnwrap(model.configDocument)
         savedDocument.upsert(hostname: "saved.example.com", service: "http://127.0.0.1:6000")
         await model.saveStructuredConfiguration(savedDocument)
 
         XCTAssertNil(model.pendingDNSPlan)
-        await model.routeDNS(savePlan)
+        await model.routeDNS(draftPlan)
         XCTAssertFalse(FileManager.default.fileExists(atPath: markerURL.path))
     }
 
@@ -1027,7 +1040,7 @@ final class ConfigurationTests: XCTestCase {
         delegate.model = model
         delegate.isAwaitingProcessShutdown = true
         var confirmationCount = 0
-        delegate.terminationRiskConfirmationOverride = { _, _ in
+        delegate.terminationRiskConfirmationOverride = { _ in
             confirmationCount += 1
             return false
         }
@@ -1160,6 +1173,76 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertEqual(model.selectedConfigURL?.standardizedFileURL, firstConfigURL.standardizedFileURL)
         XCTAssertTrue(try String(contentsOf: firstConfigURL).contains("saved.example.com"))
         XCTAssertEqual(try String(contentsOf: secondConfigURL), secondConfig)
+    }
+
+    @MainActor
+    func testStartTunnelRejectsMismatchedImportedConfiguration() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let configURL = root.appendingPathComponent("config.yml")
+        try Data(sample.utf8).write(to: configURL)
+        let defaultsName = "app.ihopeful.Tunnelful.start-gate-tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+
+        let processController = TunnelProcessController()
+        let model = AppModel(
+            processController: processController,
+            initialInstallation: testInstallation,
+            userDefaults: defaults
+        )
+        model.importConfiguration(at: configURL)
+        model.startTunnel(named: "other-tunnel")
+
+        XCTAssertEqual(
+            model.alertMessage,
+            "所选 Tunnel 与当前配置的 tunnel / credentials-file 不匹配。请导入这个 Tunnel 的本地配置，避免把专属凭据配给其他 Tunnel。"
+        )
+        XCTAssertEqual(processController.processState, .stopped)
+        XCTAssertFalse(model.canStartTunnel(named: "other-tunnel"))
+        XCTAssertTrue(model.canStartTunnel(named: "sample-tunnel-id"))
+    }
+
+    @MainActor
+    func testTerminationRisksIncludeUnsavedDraftAndApplyingConfiguration() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let configURL = root.appendingPathComponent("config.yml")
+        try Data(sample.utf8).write(to: configURL)
+        let started = expectation(description: "official validation started")
+        let validator = ControlledConfigurationValidator { started.fulfill() }
+        let defaultsName = "app.ihopeful.Tunnelful.termination-risk-tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let model = AppModel(
+            processController: TunnelProcessController(),
+            configurationValidator: validator,
+            initialInstallation: testInstallation,
+            userDefaults: defaults
+        )
+        model.importConfiguration(at: configURL)
+        XCTAssertFalse(model.terminationRisks.needsConfirmation)
+
+        var draft = try XCTUnwrap(model.configurationDraft)
+        draft.upsert(hostname: "unsaved.example.com", service: "http://127.0.0.1:4000")
+        model.configurationDraft = draft
+        XCTAssertTrue(model.terminationRisks.hasUnsavedDraft)
+        XCTAssertTrue(model.terminationRisks.needsConfirmation)
+
+        var document = try XCTUnwrap(model.configDocument)
+        document.upsert(hostname: "saved.example.com", service: "http://127.0.0.1:4000")
+        let saveTask = Task { await model.saveStructuredConfiguration(document) }
+        await fulfillment(of: [started], timeout: 2)
+        XCTAssertTrue(model.terminationRisks.isApplyingConfiguration)
+        XCTAssertTrue(model.terminationRisks.needsConfirmation)
+
+        validator.complete(with: .success("官方校验完成"))
+        await saveTask.value
+        XCTAssertFalse(model.terminationRisks.isApplyingConfiguration)
     }
 
     private var testInstallation: CloudflaredInstallation {

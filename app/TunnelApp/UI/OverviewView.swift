@@ -170,7 +170,8 @@ struct OverviewView: View {
                 Spacer(minLength: 12)
 
                 HStack(spacing: AppMetrics.controlSpacing) {
-                    if case .running = process.processState {
+                    switch process.processState {
+                    case .running, .starting:
                         Button {
                             if let runnableTunnel { model.restartTunnel(named: runnableTunnel) }
                         } label: {
@@ -184,14 +185,14 @@ struct OverviewView: View {
                             Label("停止", systemImage: "stop.fill")
                         }
                         .help("停止由本 App 启动的 Tunnel 进程")
-                    } else {
+                    case .stopped, .failed:
                         Button {
                             if let runnableTunnel { model.startTunnel(named: runnableTunnel) }
                         } label: {
                             Label("启动 Tunnel", systemImage: "play.fill")
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(runnableTunnel == nil || model.installation == nil)
+                        .disabled(!canStartDisplayedTunnel)
                         .help(startTunnelHelp)
                     }
                 }
@@ -240,12 +241,20 @@ struct OverviewView: View {
         }
     }
 
+    private var canStartDisplayedTunnel: Bool {
+        guard let runnableTunnel else { return false }
+        return model.canStartTunnel(named: runnableTunnel)
+    }
+
     private var startTunnelHelp: String {
         if model.installation == nil {
             return "未检测到 cloudflared，请先完成环境检查"
         }
         if runnableTunnel == nil {
             return "请先导入配置或选择命名 Tunnel"
+        }
+        if !canStartDisplayedTunnel {
+            return "请先导入与该 Tunnel 对应的本地配置"
         }
         return "启动当前命名 Tunnel"
     }

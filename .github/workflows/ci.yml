@@ -27,7 +27,9 @@ jobs:
       - name: 确认发布工作流会生成 Sparkle 更新源
         run: |
           set -euo pipefail
-          grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' .github/workflows/publish-app.yml
+          grep -Fq 'scripts/resolve-xcode.sh' .github/workflows/ci.yml
+          grep -Fq 'scripts/resolve-xcode.sh' .github/workflows/publish-app.yml
+          grep -Fq 'scripts/inject-appcast-hardware.py' scripts/build-release.sh
           grep -Fq "minimum_build_sdk='26.0'" scripts/verify-release.sh
           grep -Fq 'secrets.TUNNELFUL_SPARKLE_ED_PRIVATE_KEY' .github/workflows/publish-app.yml
           grep -Fq 'release/appcast.xml' .github/workflows/publish-app.yml
@@ -37,8 +39,6 @@ jobs:
   macos-app:
     name: macOS 应用（${{ matrix.architecture }}）
     runs-on: macos-15
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     strategy:
       fail-fast: false
       matrix:
@@ -46,6 +46,8 @@ jobs:
     steps:
       - name: 检出仓库
         uses: actions/checkout@v6
+      - name: 选择 Xcode 26
+        run: echo "DEVELOPER_DIR=$(bash scripts/resolve-xcode.sh)" >> "$GITHUB_ENV"
       - name: 校验 Xcode 26 构建环境
         run: bash scripts/check-xcode-toolchain.sh
       - name: 运行 Swift 单元测试

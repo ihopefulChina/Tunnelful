@@ -52,10 +52,14 @@ function nextTheme(theme: SiteTheme): SiteTheme {
 }
 
 function subscribeTheme(onChange: () => void) {
-  window.addEventListener('storage', onChange);
+  const onStorage = () => {
+    applyTheme(readStoredTheme());
+    onChange();
+  };
+  window.addEventListener('storage', onStorage);
   window.addEventListener('tunnelful-theme', onChange);
   return () => {
-    window.removeEventListener('storage', onChange);
+    window.removeEventListener('storage', onStorage);
     window.removeEventListener('tunnelful-theme', onChange);
   };
 }

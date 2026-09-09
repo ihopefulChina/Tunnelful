@@ -363,6 +363,8 @@ generate_sparkle_appcast() {
     exit 1
   fi
 
+  python3 "$project_root/scripts/inject-appcast-hardware.py" "$appcast_dir/appcast.xml"
+  xmllint --noout "$appcast_dir/appcast.xml"
   ditto "$appcast_dir/appcast.xml" "$output_dir/appcast.xml"
   ditto "$appcast_dir/appcast.xml" "$project_root/appcast.xml"
   mkdir -p "$project_root/website/public" "$output_dir/.sparkle-bin"

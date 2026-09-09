@@ -82,6 +82,53 @@ enum CloudflaredError: LocalizedError, Equatable {
     }
 }
 
+enum OriginServiceKind: Equatable, Sendable {
+    case http(URL)
+    case unix
+    case httpStatus
+    case unsupported
+
+    var isPublishable: Bool {
+        switch self {
+        case .http, .unix, .httpStatus: return true
+        case .unsupported: return false
+        }
+    }
+
+    var supportsOriginProbe: Bool {
+        if case .http = self { return true }
+        return false
+    }
+
+    static func classify(_ raw: String) -> OriginServiceKind {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("unix:") {
+            return value.count > 5 ? .unix : .unsupported
+        }
+        if value.hasPrefix("http_status:") {
+            let code = value.dropFirst("http_status:".count)
+            return Int(code) != nil ? .httpStatus : .unsupported
+        }
+        guard let url = URL(string: value),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              url.host != nil else {
+            return .unsupported
+        }
+        return .http(url)
+    }
+}
+
+struct TerminationRisks: Equatable, Sendable {
+    var hasUnsavedDraft: Bool
+    var isRoutingDNS: Bool
+    var isApplyingConfiguration: Bool
+
+    var needsConfirmation: Bool {
+        hasUnsavedDraft || isRoutingDNS || isApplyingConfiguration
+    }
+}
+
 enum ManagedProcessState: Equatable, Sendable {
     case stopped
     case starting

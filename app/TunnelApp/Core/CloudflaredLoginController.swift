@@ -1,5 +1,4 @@
 import Combine
-import Darwin
 import Foundation
 
 @MainActor
@@ -13,16 +12,31 @@ final class CloudflaredLoginController: ObservableObject {
     }
 
     @Published private(set) var state: State = .idle
+    @Published private(set) var progressMessage: String?
 
     private let inspector: EnvironmentInspector
+    private let redactor: any LogRedacting
+    private let timeout: TimeInterval
+    private let terminationGracePeriod: TimeInterval
     private var process: Process?
     private var cancellationRequested = false
+    private var timedOut = false
     private var shutdownCompletion: (() -> Void)?
+    private var timeoutWorkItem: DispatchWorkItem?
+    private var killWorkItem: DispatchWorkItem?
 
     var isRunning: Bool { process != nil }
 
-    init(inspector: EnvironmentInspector = EnvironmentInspector()) {
+    init(
+        inspector: EnvironmentInspector = EnvironmentInspector(),
+        redactor: any LogRedacting = SensitiveLogRedactor.shared,
+        timeout: TimeInterval = 600,
+        terminationGracePeriod: TimeInterval = 5
+    ) {
         self.inspector = inspector
+        self.redactor = redactor
+        self.timeout = timeout
+        self.terminationGracePeriod = terminationGracePeriod
     }
 
     func start(executableURL: URL, completion: @escaping @MainActor @Sendable () -> Void) {
@@ -43,48 +57,63 @@ final class CloudflaredLoginController: ObservableObject {
         }
 
         let process = Process()
+        let standardOutput = Pipe()
+        let standardError = Pipe()
+        let outputCapture = LockedDataCapture()
+        let errorCapture = LockedDataCapture()
+        let drainGroup = DispatchGroup()
+        let launch = ProcessLifetimeSupervisor.wrapIfNeeded(
+            executableURL: executableURL,
+            arguments: ["tunnel", "login"],
+            environment: CloudflaredProcessEnvironment.sanitized()
+        )
 
-        process.executableURL = executableURL
-        process.arguments = ["tunnel", "login"]
-        process.environment = CloudflaredProcessEnvironment.sanitized()
+        process.executableURL = launch.executableURL
+        process.arguments = launch.arguments
+        process.environment = launch.environment
         process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        process.standardOutput = standardOutput
+        process.standardError = standardError
 
         process.terminationHandler = { [weak self] finishedProcess in
             let terminationStatus = finishedProcess.terminationStatus
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                let wasCancelled = self.cancellationRequested
-                self.process = nil
-                self.cancellationRequested = false
-
-                if wasCancelled {
-                    self.state = .cancelled
-                } else if terminationStatus == 0, self.inspector.hasUsableCertificate() {
-                    self.state = .succeeded
-                    completion()
-                } else if terminationStatus == 0 {
-                    self.state = .failed("浏览器登录尚未完成，未发现有效的 cert.pem。")
-                } else {
-                    self.state = .failed(
-                        "官方登录未完成（退出状态 \(terminationStatus)）。" +
-                        "请检查浏览器与网络后重试。"
+            drainGroup.notify(queue: .main) {
+                Task { @MainActor [weak self] in
+                    self?.finishLogin(
+                        terminationStatus: terminationStatus,
+                        stdout: outputCapture.value,
+                        stderr: errorCapture.value,
+                        completion: completion
                     )
-                }
-                if let completion = self.shutdownCompletion {
-                    self.shutdownCompletion = nil
-                    completion()
                 }
             }
         }
 
         do {
             cancellationRequested = false
+            timedOut = false
+            progressMessage = nil
             self.process = process
             state = .running
+            drainGroup.enter()
+            drainGroup.enter()
             try process.run()
+            scheduleTimeout()
+            startReading(
+                standardOutput.fileHandleForReading,
+                into: outputCapture,
+                drainGroup: drainGroup,
+                label: "\(AppIdentity.bundleIdentifier).login.stdout"
+            )
+            startReading(
+                standardError.fileHandleForReading,
+                into: errorCapture,
+                drainGroup: drainGroup,
+                label: "\(AppIdentity.bundleIdentifier).login.stderr"
+            )
         } catch {
+            drainGroup.leave()
+            drainGroup.leave()
             self.process = nil
             state = .failed("无法启动官方登录：\(error.localizedDescription)")
         }
@@ -109,16 +138,134 @@ final class CloudflaredLoginController: ObservableObject {
     func reset() {
         guard process == nil else { return }
         state = .idle
+        progressMessage = nil
+    }
+
+    private func startReading(
+        _ handle: FileHandle,
+        into capture: LockedDataCapture,
+        drainGroup: DispatchGroup,
+        label: String
+    ) {
+        let reader = ProcessPipeReader(fileHandle: handle, label: label)
+        reader.start { [weak self] chunk in
+            capture.append(chunk)
+            let snippet = CloudflaredLoginController.firstHTTPURL(
+                in: String(decoding: capture.value, as: UTF8.self)
+            )
+            guard let snippet else { return }
+            Task { @MainActor [weak self] in
+                guard let self, self.process != nil else { return }
+                if self.progressMessage == nil {
+                    self.progressMessage = snippet
+                }
+            }
+        } onFinished: {
+            drainGroup.leave()
+        }
+    }
+
+    private func finishLogin(
+        terminationStatus: Int32,
+        stdout: Data,
+        stderr: Data,
+        completion: @escaping @MainActor @Sendable () -> Void
+    ) {
+        let wasCancelled = cancellationRequested
+        let didTimeOut = timedOut
+        process = nil
+        cancellationRequested = false
+        timedOut = false
+        timeoutWorkItem?.cancel()
+        timeoutWorkItem = nil
+        killWorkItem?.cancel()
+        killWorkItem = nil
+
+        let captured = Self.combinedOutput(stdout: stdout, stderr: stderr)
+        let redacted = redactor.redact(captured).trimmingCharacters(in: .whitespacesAndNewlines)
+        let loginURL = Self.firstHTTPURL(in: redacted)
+
+        if didTimeOut {
+            var message = "官方登录等待超时。请检查浏览器后重试。"
+            if let loginURL {
+                message += " 可打开：\(loginURL)"
+            }
+            state = .failed(message)
+            progressMessage = loginURL
+        } else if wasCancelled {
+            state = .cancelled
+            progressMessage = nil
+        } else if terminationStatus == 0, inspector.hasUsableCertificate() {
+            state = .succeeded
+            progressMessage = nil
+            completion()
+        } else if terminationStatus == 0 {
+            state = .failed("浏览器登录尚未完成，未发现有效的 cert.pem。")
+            progressMessage = loginURL
+        } else {
+            var message = "官方登录未完成（退出状态 \(terminationStatus)）。请检查浏览器与网络后重试。"
+            if let loginURL {
+                message += " 可打开：\(loginURL)"
+            }
+            state = .failed(message)
+            progressMessage = loginURL
+        }
+        if let shutdownCompletion {
+            self.shutdownCompletion = nil
+            shutdownCompletion()
+        }
+    }
+
+    private func scheduleTimeout() {
+        timeoutWorkItem?.cancel()
+        guard timeout > 0 else { return }
+        let item = DispatchWorkItem { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.process != nil else { return }
+                self.timedOut = true
+                self.cancellationRequested = true
+                if let process = self.process {
+                    self.terminateWithFallback(process)
+                }
+            }
+        }
+        timeoutWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: item)
     }
 
     private func terminateWithFallback(_ ownedProcess: Process) {
+        timeoutWorkItem?.cancel()
+        timeoutWorkItem = nil
+        killWorkItem?.cancel()
         ownedProcess.terminate()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self, weak ownedProcess] in
+        let item = DispatchWorkItem { [weak self, weak ownedProcess] in
             guard let self,
                   let ownedProcess,
                   self.process === ownedProcess,
                   ownedProcess.isRunning else { return }
-            kill(ownedProcess.processIdentifier, SIGKILL)
+            ProcessLifetimeSupervisor.killSupervisedProcessTree(ownedProcess.processIdentifier)
         }
+        killWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + terminationGracePeriod, execute: item)
+    }
+
+    nonisolated static func firstHTTPURL(in text: String) -> String? {
+        let pattern = #"https?://[^\s"']+"#
+        guard let expression = try? NSRegularExpression(pattern: pattern),
+              let match = expression.firstMatch(
+                in: text,
+                range: NSRange(text.startIndex..., in: text)
+              ),
+              let range = Range(match.range, in: text) else {
+            return nil
+        }
+        return String(text[range]).trimmingCharacters(in: CharacterSet(charactersIn: ".,);"))
+    }
+
+    private static func combinedOutput(stdout: Data, stderr: Data) -> String {
+        [stdout, stderr]
+            .map { String(decoding: $0, as: UTF8.self) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
     }
 }

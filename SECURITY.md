@@ -4,10 +4,10 @@
 
 | 版本 | 安全维护状态 |
 | --- | --- |
-| `0.1.11` | 当前版本，接受安全报告；社区维护，不承诺固定响应时限 |
+| `0.1.12` | 当前版本，接受安全报告；社区维护，不承诺固定响应时限 |
 | 更早版本 | 不支持 |
 
-Tunnelful `0.1.11` 使用正式版本号，但当前安装包仍采用 ad-hoc 签名且尚未经过 Apple 公证。它不应被视为生产环境的安全边界，也不适合在无人值守的关键主机上部署。
+Tunnelful `0.1.12` 使用正式版本号，但当前安装包仍采用 ad-hoc 签名且尚未经过 Apple 公证。它不应被视为生产环境的安全边界，也不适合在无人值守的关键主机上部署。
 
 ## 信任边界
 
@@ -29,7 +29,7 @@ Tunnelful 是官方 `cloudflared` 的 macOS 控制面，不实现 Cloudflare Tun
 - 保存配置前执行本地检查与官方 CLI 校验。
 - DNS 路由命令会先提供预览；执行前由用户核对真实目标并单独确认。命令显式传入 `--overwrite-dns=false`。
 - DNS 命令超时或应用在执行中退出时，远端结果可能未知；重试前必须先在 Cloudflare DNS 核对记录。
-- 启动 `cloudflared` 时移除 `TUNNEL_*`、`CF_*` 与 `CLOUDFLARED_*` 环境变量，避免宿主环境静默切换账户、Token 或远端操作语义。
+- 启动 `cloudflared` 时移除 `TUNNEL_*`、`CF_*`、`CLOUDFLARED_*`、`DYLD_*` 与 `LD_*` 环境变量，避免宿主环境静默切换账户、Token、远端操作语义或注入动态库。`HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 仍会继承，并在环境检查中标明。
 - 配置采用原子写入；覆盖前备份，原文件权限存在时予以保持，新文件默认使用仅当前用户可读写的权限。
 - 临时预览配置使用仅当前用户可读写的权限，并在操作结束后删除。
 - Tunnel credentials 只检查文件元数据；`cert.pem` 仅在本机读取并校验官方结构，不展示、记录或上传其内容。
@@ -46,6 +46,7 @@ Tunnelful 是官方 `cloudflared` 的 macOS 控制面，不实现 Cloudflare Tun
 - HTTP/HTTPS 源站预检会真实发送 GET 请求，不应将具有副作用的地址用于预检。
 - 配置备份可能包含与原文件相同的敏感路径和参数，必须限制其读取权限和分享范围。
 - 当前发布包未经过 Developer ID 签名和 Apple 公证，无法提供正式发布版的来源保证。
+- 为加载与应用不同签名身份的 Sparkle，当前 entitlements 启用 `disable-library-validation`。这是 ad-hoc / 未公证分发下的已知权衡，不是可删除的优化项。完成 Developer ID 签名并对 Sparkle 与主程序使用同一签名身份、且通过 Apple 公证后，应重新评估并关闭该权限。
 - 0.1.10 的 Bundle ID 已调整为 `app.ihopeful.Tunnelful`；0.1.9 及更早版本需要从本仓库的 GitHub Release 手动下载安装，不能依赖旧版应用内更新完成替换。
 
 ## 凭据处理建议
