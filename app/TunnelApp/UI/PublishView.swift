@@ -9,7 +9,6 @@ struct PublishView: View {
     @State private var hostname = ""
     @State private var service = ""
     @State private var path = ""
-    @State private var isShowingDNSConfirmation = false
     @State private var copiedDNSCommand = false
     @State private var copyFeedbackGeneration = 0
 
@@ -19,7 +18,7 @@ struct PublishView: View {
                 NoticeView(
                     kind: .info,
                     title: "远端 DNS 需要确认",
-                    message: "Tunnelful 会先保存并校验本地 Ingress；只有你再次确认后，才会执行 tunnel route dns。"
+                    message: "保存本地 Ingress 后会立刻弹出 DNS 确认；只有你确认后，才会执行 tunnel route dns。若 Tunnel 已在运行，确认后还会询问是否重启连接器。"
                 )
 
                 tunnelSection
@@ -212,7 +211,7 @@ struct PublishView: View {
                             .help("使用当前命名 Tunnel 重新启动托管进程")
                     } else {
                         Button("启动 Tunnel") { model.startTunnel(named: tunnelName) }
-                            .disabled(model.pendingDNSPlan == nil || !model.canStartTunnel(named: tunnelName))
+                            .disabled(!model.canStartTunnel(named: tunnelName))
                             .help(startTunnelHelp)
                     }
                 }
@@ -232,7 +231,7 @@ struct PublishView: View {
                         .accessibilityValue(copiedDNSCommand ? "已复制到剪贴板" : "")
 
                         Button {
-                            isShowingDNSConfirmation = true
+                            model.presentPendingDNSConfirmation()
                         } label: {
                             if model.isRoutingDNS {
                                 ProgressView()
@@ -242,18 +241,7 @@ struct PublishView: View {
                             }
                         }
                         .disabled(model.isRoutingDNS)
-                        .confirmationDialog(
-                            "配置 Cloudflare DNS 路由？",
-                            isPresented: $isShowingDNSConfirmation,
-                            titleVisibility: .visible
-                        ) {
-                            Button("确认配置 DNS 路由") {
-                                Task { await model.routeDNS(plan) }
-                            }
-                            Button("取消", role: .cancel) {}
-                        } message: {
-                            Text("将执行 \(plan.displayCommand)。这会在你的 Cloudflare 账户中创建 DNS CNAME 记录。")
-                        }
+                        .help("再次确认后才会在 Cloudflare 账户中创建 DNS CNAME 记录")
 
                         Spacer(minLength: 0)
                     }
@@ -390,7 +378,6 @@ struct PublishView: View {
     }
 
     private var startTunnelHelp: String {
-        if model.pendingDNSPlan == nil { return "请先保存本地配置" }
         if !model.canStartTunnel(named: tunnelName) {
             return "请先导入与该 Tunnel 对应的本地配置"
         }
@@ -426,7 +413,7 @@ struct PublishView: View {
         if model.configDocument == nil { return "请先导入配置文件" }
         if !isFormValid { return "请先填写有效的 Tunnel、域名和源站" }
         if model.isApplyingConfiguration { return "正在保存并校验" }
-        return "校验后写入本地 Ingress，并自动备份原文件"
+        return "校验后写入本地 Ingress，并立刻请你确认 DNS 路由"
     }
 
     private func copy(_ value: String) {

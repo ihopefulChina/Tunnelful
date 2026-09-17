@@ -1,4 +1,4 @@
-export const releaseVersion = '0.1.12';
+export const releaseVersion = '0.1.13';
 export const repositoryURL = 'https://github.com/ihopefulChina/Tunnelful';
 export const releaseTagURL = `${repositoryURL}/releases/tag/v${releaseVersion}`;
 

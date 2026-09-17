@@ -39,7 +39,7 @@ const features = [
     label: '发布',
     title: '本地配置与远端 DNS，边界分明。',
     description:
-      '源站检查只对应当前地址，Tunnel 与专属凭据必须匹配；DNS 命令先预览再确认，并明确禁止覆盖同名记录。',
+      '源站检查只对应当前地址，Tunnel 与专属凭据必须匹配；保存 Ingress 后立刻确认 DNS，必要时再重启或启动 Tunnel。命令显式禁止覆盖同名记录。',
   },
   {
     label: '状态',
@@ -85,7 +85,7 @@ export default function Home() {
           <span>交给一个真正的 Mac 应用。</span>
         </h1>
         <p className="hero-description">
-          检查环境，安全编辑 Ingress，预览并确认 DNS 路由，分别查看进程、Edge 与源站状态。
+          检查环境，安全编辑 Ingress，保存后确认 DNS 路由，必要时重启 Tunnel。分别查看进程、Edge 与源站状态。
           窗口关闭后仍常驻菜单栏。
         </p>
         <DownloadChooser />

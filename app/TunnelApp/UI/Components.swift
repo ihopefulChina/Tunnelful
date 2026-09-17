@@ -231,15 +231,23 @@ private struct ModelAlertPresenter: ViewModifier {
     @ObservedObject var model: AppModel
     @Environment(\.controlActiveState) private var controlActiveState
     @State private var ownsAlert = false
+    @State private var ownsActivationPrompt = false
 
     func body(content: Content) -> some View {
         content
-            .onAppear(perform: claimAlertIfPossible)
+            .onAppear {
+                claimAlertIfPossible()
+                claimActivationPromptIfPossible()
+            }
             .onChange(of: model.alertMessage) { _, _ in
                 claimAlertIfPossible()
             }
+            .onChange(of: model.activationPrompt) { _, _ in
+                claimActivationPromptIfPossible()
+            }
             .onChange(of: controlActiveState) { _, _ in
                 claimAlertIfPossible()
+                claimActivationPromptIfPossible()
             }
             .alert("需要处理", isPresented: Binding(
                 get: { ownsAlert && model.alertMessage != nil },
@@ -256,6 +264,31 @@ private struct ModelAlertPresenter: ViewModifier {
             } message: {
                 Text(model.alertMessage ?? "")
             }
+            .confirmationDialog(
+                model.activationPrompt?.title ?? "需要确认",
+                isPresented: Binding(
+                    get: { ownsActivationPrompt && model.activationPrompt != nil },
+                    set: { isPresented in
+                        guard !isPresented else { return }
+                        ownsActivationPrompt = false
+                        model.dismissActivationPrompt()
+                    }
+                ),
+                titleVisibility: .visible
+            ) {
+                if let prompt = model.activationPrompt {
+                    Button(prompt.confirmTitle) {
+                        ownsActivationPrompt = false
+                        model.confirmActivationPrompt()
+                    }
+                    Button(prompt.cancelTitle, role: .cancel) {
+                        ownsActivationPrompt = false
+                        model.dismissActivationPrompt()
+                    }
+                }
+            } message: {
+                Text(model.activationPrompt?.message ?? "")
+            }
     }
 
     private func claimAlertIfPossible() {
@@ -265,6 +298,15 @@ private struct ModelAlertPresenter: ViewModifier {
             return
         }
         ownsAlert = true
+    }
+
+    private func claimActivationPromptIfPossible() {
+        guard !ownsActivationPrompt,
+              controlActiveState == .key,
+              model.activationPrompt != nil else {
+            return
+        }
+        ownsActivationPrompt = true
     }
 }
 

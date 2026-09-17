@@ -75,6 +75,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastValidationMessage: String?
     @Published private(set) var lastBackupURL: URL?
     @Published private(set) var pendingDNSPlan: DNSRoutePlan?
+    @Published var activationPrompt: ConfigurationActivationPrompt?
     @Published private(set) var isRoutingDNS = false
     @Published private(set) var lastDNSRouteMessage: String?
     @Published private(set) var launchAtLoginState: LaunchAtLoginState
@@ -119,6 +120,9 @@ final class AppModel: ObservableObject {
     private var activeConfigurationPreviewURL: URL?
     private var activeConfigurationValidationTask: Task<String, Error>?
     private var activeDNSRouteTask: Task<String, Error>?
+    private var queuedDNSPlans: [DNSRoutePlan] = []
+    private var pendingConnectorFollowUp: ConfigurationActivationPlan.ConnectorFollowUp?
+    private var activationPromptGeneration = 0
 
     init(
         processController: TunnelProcessController,
@@ -536,6 +540,7 @@ final class AppModel: ObservableObject {
         pendingDNSPlan = nil
         lastValidationMessage = nil
         lastDNSRouteMessage = nil
+        clearActivationFollowUp()
         if resetOrigin {
             originCheckGeneration &+= 1
             originCheck = nil
@@ -591,6 +596,118 @@ final class AppModel: ObservableObject {
     private func invalidatePendingDNSRoute() {
         pendingDNSPlan = nil
         lastDNSRouteMessage = nil
+        clearActivationFollowUp()
+    }
+
+    private var isManagedConnectorActive: Bool {
+        switch processController.processState {
+        case .running, .starting:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func clearActivationFollowUp() {
+        queuedDNSPlans = []
+        pendingConnectorFollowUp = nil
+        activationPromptGeneration &+= 1
+        activationPrompt = nil
+    }
+
+    private func beginActivationFollowUp(_ plan: ConfigurationActivationPlan) {
+        queuedDNSPlans = plan.dnsPlans
+        pendingConnectorFollowUp = plan.connectorAction
+        pendingDNSPlan = queuedDNSPlans.first
+        presentNextActivationPrompt(deferred: false)
+    }
+
+    private func presentNextActivationPrompt(deferred: Bool) {
+        let next: ConfigurationActivationPrompt?
+        if let plan = queuedDNSPlans.first {
+            pendingDNSPlan = plan
+            next = .confirmDNS(plan)
+        } else if let action = pendingConnectorFollowUp {
+            switch action {
+            case let .restart(name):
+                next = .confirmRestart(tunnelName: name)
+            case let .start(name):
+                next = .confirmStart(tunnelName: name)
+            }
+        } else {
+            pendingDNSPlan = nil
+            next = nil
+        }
+
+        activationPromptGeneration &+= 1
+        let generation = activationPromptGeneration
+        if deferred {
+            activationPrompt = nil
+            Task { @MainActor in
+                guard generation == self.activationPromptGeneration else { return }
+                self.activationPrompt = next
+            }
+            return
+        }
+        activationPrompt = next
+    }
+
+    func presentPendingDNSConfirmation() {
+        guard let plan = pendingDNSPlan ?? queuedDNSPlans.first else { return }
+        if queuedDNSPlans.isEmpty {
+            queuedDNSPlans = [plan]
+        }
+        pendingDNSPlan = plan
+        activationPrompt = .confirmDNS(plan)
+    }
+
+    func confirmActivationPrompt() {
+        let prompt = activationPrompt
+        activationPrompt = nil
+        switch prompt {
+        case let .confirmDNS(plan):
+            Task { await routeDNS(plan) }
+        case let .confirmRestart(name):
+            pendingConnectorFollowUp = nil
+            restartTunnel(named: name)
+        case let .confirmStart(name):
+            pendingConnectorFollowUp = nil
+            startTunnel(named: name)
+        case nil:
+            break
+        }
+    }
+
+    func dismissActivationPrompt() {
+        guard let prompt = activationPrompt else { return }
+        activationPrompt = nil
+        switch prompt {
+        case .confirmDNS:
+            presentConnectorFollowUpIfNeeded(deferred: true)
+        case .confirmRestart, .confirmStart:
+            pendingConnectorFollowUp = nil
+        }
+    }
+
+    private func presentConnectorFollowUpIfNeeded(deferred: Bool) {
+        guard let action = pendingConnectorFollowUp else { return }
+        let next: ConfigurationActivationPrompt
+        switch action {
+        case let .restart(name):
+            next = .confirmRestart(tunnelName: name)
+        case let .start(name):
+            next = .confirmStart(tunnelName: name)
+        }
+        activationPromptGeneration &+= 1
+        let generation = activationPromptGeneration
+        if deferred {
+            Task { @MainActor in
+                guard generation == self.activationPromptGeneration else { return }
+                self.activationPrompt = next
+            }
+            return
+        }
+        activationPrompt = next
     }
 
     private static func normalizedOriginTarget(_ service: String) -> String {
@@ -645,6 +762,7 @@ final class AppModel: ObservableObject {
         guard !isRoutingDNS else { return }
         pendingDNSPlan = nil
         lastDNSRouteMessage = nil
+        clearActivationFollowUp()
         guard !hasUnsavedConfigurationDraft else {
             alertMessage = "Ingress 配置还有未保存的更改。请先处理这些更改，再发布服务。"
             return
@@ -653,6 +771,7 @@ final class AppModel: ObservableObject {
             alertMessage = "请先导入配置并检测 cloudflared，再发布服务。"
             return
         }
+        let previousDocument = document
 
         let cleanTunnelName = tunnelName.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanHostname = hostname.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -705,7 +824,6 @@ final class AppModel: ObservableObject {
         do {
             try writeConfigurationPreview(document, to: previewURL)
 
-            let client = CloudflaredClient(installation: installation)
             let validation = try await validateConfiguration(
                 installation: installation,
                 previewURL: previewURL
@@ -717,9 +835,15 @@ final class AppModel: ObservableObject {
             configurationDraft = document
             lastBackupURL = saveResult.backupURL
             lastValidationMessage = validation.isEmpty ? "官方校验通过。" : validation
-            pendingDNSPlan = client.dnsRoutePlan(
-                tunnelName: cleanTunnelName,
-                hostname: cleanHostname
+            beginActivationFollowUp(
+                ConfigurationActivationPlanner.plan(
+                    previous: previousDocument,
+                    current: document,
+                    dnsHostnames: [cleanHostname],
+                    tunnelName: cleanTunnelName,
+                    connectorIsActive: isManagedConnectorActive,
+                    canStartConnector: canStartTunnel(named: cleanTunnelName)
+                )
             )
         } catch is CancellationError {
             return
@@ -751,6 +875,7 @@ final class AppModel: ObservableObject {
         }
         guard let document = configDocument else {
             pendingDNSPlan = nil
+            clearActivationFollowUp()
             alertMessage = "请先重新导入并保存本地配置，再配置 DNS 路由。"
             return
         }
@@ -759,11 +884,13 @@ final class AppModel: ObservableObject {
         } catch ConfigurationStoreError.fileChangedSinceLoad {
             pendingDNSPlan = nil
             lastDNSRouteMessage = nil
+            clearActivationFollowUp()
             alertMessage = "配置文件已在本地保存后被其他应用修改。DNS 路由未执行；请重新导入并保存后再试。"
             return
         } catch {
             pendingDNSPlan = nil
             lastDNSRouteMessage = nil
+            clearActivationFollowUp()
             alertMessage = "无法重新核对本地配置，DNS 路由未执行：\(error.localizedDescription)"
             return
         }
@@ -782,8 +909,10 @@ final class AppModel: ObservableObject {
         do {
             let output = try await routeTask.value
             guard !isTerminating else { return }
-            pendingDNSPlan = nil
+            queuedDNSPlans.removeAll { $0 == plan }
+            pendingDNSPlan = queuedDNSPlans.first
             lastDNSRouteMessage = output.isEmpty ? "DNS 路由已配置。" : output
+            presentNextActivationPrompt(deferred: true)
         } catch is CancellationError {
             return
         } catch let error as CloudflaredError where error == .commandCancelled {
@@ -812,6 +941,7 @@ final class AppModel: ObservableObject {
         isApplyingConfiguration = true
         defer { isApplyingConfiguration = false }
 
+        let previousDocument = configDocument
         let errors = document.validationIssues().filter { $0.severity == .error }
         guard errors.isEmpty else {
             alertMessage = errors.map(\.message).joined(separator: " ")
@@ -834,7 +964,29 @@ final class AppModel: ObservableObject {
             configurationDraft = document
             lastBackupURL = result.backupURL
             lastValidationMessage = output.isEmpty ? "官方校验通过。" : output
-            invalidatePendingDNSRoute()
+            let addedHostnames = ConfigurationActivationPlanner.addedHostnames(
+                from: previousDocument,
+                to: document
+            )
+            let tunnelName = Self.resolvePreferredTunnelName(
+                configuredTunnel: document.tunnel,
+                credentialsFile: document.credentialsFile,
+                tunnels: tunnels
+            )
+            if !addedHostnames.isEmpty,
+               tunnelName == nil || tunnelName?.hasPrefix("-") == true {
+                alertMessage = "本地配置已保存。请到“发布服务”选择 Tunnel，再确认 DNS 路由。"
+            }
+            beginActivationFollowUp(
+                ConfigurationActivationPlanner.plan(
+                    previous: previousDocument,
+                    current: document,
+                    dnsHostnames: addedHostnames,
+                    tunnelName: tunnelName,
+                    connectorIsActive: isManagedConnectorActive,
+                    canStartConnector: tunnelName.map { canStartTunnel(named: $0) } ?? false
+                )
+            )
         } catch is CancellationError {
             return
         } catch let error as CloudflaredError where error == .commandCancelled {

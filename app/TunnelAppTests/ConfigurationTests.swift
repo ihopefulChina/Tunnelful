@@ -786,8 +786,12 @@ final class ConfigurationTests: XCTestCase {
         savedDocument.upsert(hostname: "saved.example.com", service: "http://127.0.0.1:6000")
         await model.saveStructuredConfiguration(savedDocument)
 
-        XCTAssertNil(model.pendingDNSPlan)
+        let savedPlan = try XCTUnwrap(model.pendingDNSPlan)
+        XCTAssertEqual(savedPlan.hostname, "saved.example.com")
+        XCTAssertEqual(savedPlan.tunnelName, "sample-tunnel-id")
+        XCTAssertEqual(model.activationPrompt, .confirmDNS(savedPlan))
         await model.routeDNS(draftPlan)
+        XCTAssertEqual(model.pendingDNSPlan, savedPlan)
         XCTAssertFalse(FileManager.default.fileExists(atPath: markerURL.path))
     }
 
@@ -826,6 +830,145 @@ final class ConfigurationTests: XCTestCase {
         model.invalidatePublishPlan()
         await model.routeDNS(plan)
         XCTAssertEqual(model.alertMessage, "发布内容已经变化，请重新保存本地配置后再配置 DNS 路由。")
+        XCTAssertNil(model.activationPrompt)
+    }
+
+    func testActivationPlannerQueuesAddedHostnamesAndRestartsActiveConnector() throws {
+        let previous = try CloudflaredConfigParser().parse(contents: sample)
+        var current = previous
+        current.upsert(hostname: "api.example.com", service: "http://127.0.0.1:4000")
+
+        let plan = ConfigurationActivationPlanner.plan(
+            previous: previous,
+            current: current,
+            dnsHostnames: ConfigurationActivationPlanner.addedHostnames(from: previous, to: current),
+            tunnelName: "sample-tunnel-id",
+            connectorIsActive: true,
+            canStartConnector: true
+        )
+
+        XCTAssertEqual(plan.dnsPlans.map(\.hostname), ["api.example.com"])
+        XCTAssertEqual(plan.dnsPlans.map(\.tunnelName), ["sample-tunnel-id"])
+        XCTAssertEqual(plan.connectorAction, .restart(tunnelName: "sample-tunnel-id"))
+    }
+
+    func testActivationPlannerStartsStoppedConnectorOnlyWhenDNSIsNeeded() throws {
+        let previous = try CloudflaredConfigParser().parse(contents: sample)
+        var serviceOnly = previous
+        serviceOnly.upsert(hostname: "dev.example.com", service: "http://127.0.0.1:4000")
+        let servicePlan = ConfigurationActivationPlanner.plan(
+            previous: previous,
+            current: serviceOnly,
+            dnsHostnames: ConfigurationActivationPlanner.addedHostnames(from: previous, to: serviceOnly),
+            tunnelName: "sample-tunnel-id",
+            connectorIsActive: false,
+            canStartConnector: true
+        )
+        XCTAssertTrue(servicePlan.dnsPlans.isEmpty)
+        XCTAssertNil(servicePlan.connectorAction)
+
+        var added = previous
+        added.upsert(hostname: "api.example.com", service: "http://127.0.0.1:4000")
+        let addedPlan = ConfigurationActivationPlanner.plan(
+            previous: previous,
+            current: added,
+            dnsHostnames: ConfigurationActivationPlanner.addedHostnames(from: previous, to: added),
+            tunnelName: "sample-tunnel-id",
+            connectorIsActive: false,
+            canStartConnector: true
+        )
+        XCTAssertEqual(addedPlan.dnsPlans.map(\.hostname), ["api.example.com"])
+        XCTAssertEqual(addedPlan.connectorAction, .start(tunnelName: "sample-tunnel-id"))
+    }
+
+    @MainActor
+    func testLocalPublishPresentsDNSConfirmationImmediately() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let configURL = root.appendingPathComponent("config.yml")
+        try Data(sample.utf8).write(to: configURL)
+        let defaultsName = "app.ihopeful.Tunnelful.publish-prompt-tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let model = AppModel(
+            processController: TunnelProcessController(),
+            configurationValidator: SuccessfulConfigurationValidator(),
+            initialInstallation: testInstallation,
+            userDefaults: defaults
+        )
+        model.importConfiguration(at: configURL)
+
+        await model.applyLocalPublish(
+            tunnelName: "sample-tunnel-id",
+            hostname: "route.example.com",
+            service: "http://127.0.0.1:3000"
+        )
+
+        let plan = try XCTUnwrap(model.pendingDNSPlan)
+        XCTAssertEqual(plan.hostname, "route.example.com")
+        XCTAssertEqual(model.activationPrompt, .confirmDNS(plan))
+    }
+
+    @MainActor
+    func testDismissingDNSConfirmationKeepsPlanAndOffersToStartTunnel() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let configURL = root.appendingPathComponent("config.yml")
+        try Data(sample.utf8).write(to: configURL)
+        let defaultsName = "app.ihopeful.Tunnelful.dismiss-dns-tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let model = AppModel(
+            processController: TunnelProcessController(),
+            configurationValidator: SuccessfulConfigurationValidator(),
+            initialInstallation: testInstallation,
+            userDefaults: defaults
+        )
+        model.importConfiguration(at: configURL)
+
+        await model.applyLocalPublish(
+            tunnelName: "sample-tunnel-id",
+            hostname: "route.example.com",
+            service: "http://127.0.0.1:3000"
+        )
+        let plan = try XCTUnwrap(model.pendingDNSPlan)
+        model.dismissActivationPrompt()
+
+        XCTAssertEqual(model.pendingDNSPlan, plan)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(model.activationPrompt, .confirmStart(tunnelName: "sample-tunnel-id"))
+    }
+
+    @MainActor
+    func testStructuredSaveWithoutNewHostnameDoesNotPromptDNS() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let configURL = root.appendingPathComponent("config.yml")
+        try Data(sample.utf8).write(to: configURL)
+        let defaultsName = "app.ihopeful.Tunnelful.structured-save-no-dns-tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let model = AppModel(
+            processController: TunnelProcessController(),
+            configurationValidator: SuccessfulConfigurationValidator(),
+            initialInstallation: testInstallation,
+            userDefaults: defaults
+        )
+        model.importConfiguration(at: configURL)
+
+        var changedDocument = try XCTUnwrap(model.configDocument)
+        changedDocument.tunnel = "replacement-tunnel"
+        await model.saveStructuredConfiguration(changedDocument)
+
+        XCTAssertNil(model.pendingDNSPlan)
+        XCTAssertNil(model.activationPrompt)
+        XCTAssertNil(model.alertMessage)
     }
 
     @MainActor

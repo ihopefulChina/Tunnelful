@@ -290,6 +290,66 @@ struct LogEntry: Identifiable, Equatable, Sendable {
     let message: String
 }
 
+struct ConfigurationActivationPlan: Equatable, Sendable {
+    var dnsPlans: [DNSRoutePlan]
+    var connectorAction: ConnectorFollowUp?
+
+    enum ConnectorFollowUp: Equatable, Sendable {
+        case restart(tunnelName: String)
+        case start(tunnelName: String)
+    }
+}
+
+enum ConfigurationActivationPrompt: Equatable, Sendable {
+    case confirmDNS(DNSRoutePlan)
+    case confirmRestart(tunnelName: String)
+    case confirmStart(tunnelName: String)
+
+    var title: String {
+        switch self {
+        case .confirmDNS:
+            return "配置 Cloudflare DNS 路由？"
+        case .confirmRestart:
+            return "重新启动 Tunnel？"
+        case .confirmStart:
+            return "启动 Tunnel？"
+        }
+    }
+
+    var confirmTitle: String {
+        switch self {
+        case .confirmDNS:
+            return "确认配置 DNS 路由"
+        case .confirmRestart:
+            return "重新启动 Tunnel"
+        case .confirmStart:
+            return "启动 Tunnel"
+        }
+    }
+
+    var cancelTitle: String {
+        switch self {
+        case .confirmDNS:
+            return "稍后再说"
+        case .confirmRestart:
+            return "稍后自行重启"
+        case .confirmStart:
+            return "稍后自行启动"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case let .confirmDNS(plan):
+            return "将执行 \(plan.displayCommand)。这会在你的 Cloudflare 账户中创建 DNS CNAME 记录，不会覆盖同名的已有记录。"
+        case let .confirmRestart(tunnelName):
+            return "本地 Ingress 已更新。重新启动 Tunnel “\(tunnelName)” 后，连接器才会使用新的 hostname。"
+        case let .confirmStart(tunnelName):
+            return "本地配置已保存。启动 Tunnel “\(tunnelName)” 后，公网才会转发到源站。"
+        }
+    }
+}
+
 struct DNSRoutePlan: Equatable, Sendable {
     let tunnelName: String
     let hostname: String

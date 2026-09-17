@@ -257,7 +257,7 @@ struct ConfigurationEditorView: View {
         NoticeView(
             kind: .info,
             title: "高级字段会保留",
-            message: "此页面只修改 ingress 中的 hostname、path 与 service；其他配置段、注释和规则内高级字段不会在这里展开编辑，保存时仍会写回。"
+            message: "此页面只修改 ingress 中的 hostname、path 与 service；其他配置段、注释和规则内高级字段不会在这里展开编辑，保存时仍会写回。新增 hostname 后会弹出 DNS 路由确认，不会自动改 Cloudflare 记录；正在运行的 Tunnel 需重启后才使用新规则。"
         )
     }
 
@@ -367,7 +367,7 @@ struct ConfigurationEditorView: View {
 
     private var saveStatusDetail: String {
         if let firstError = localErrors.first { return firstError.message }
-        if hasUnsavedChanges { return "保存时会先运行官方校验，并自动备份原文件。" }
+        if hasUnsavedChanges { return "保存时会先运行官方校验并备份；若有新的 hostname，会请你确认 DNS 路由。" }
         if let message = model.lastValidationMessage { return message }
         if model.installation == nil { return "检测到 cloudflared 后才能运行官方校验。" }
         return "修改规则后即可保存。"

@@ -25,8 +25,8 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .overview: return "本地进程、Cloudflare Edge 与源站"
         case .tunnels: return "官方 CLI 返回的命名 Tunnel"
-        case .publish: return "准备 Ingress，确认后配置 DNS"
-        case .configuration: return "编辑 hostname、path 与 service"
+        case .publish: return "保存 Ingress 后确认 DNS，必要时重启 Tunnel"
+        case .configuration: return "编辑 hostname、path 与 service；新域名保存后确认 DNS"
         case .environment: return "Tunnel 凭据只查元数据，证书仅本机校验"
         case .logs: return "已脱敏的进程输出"
         }

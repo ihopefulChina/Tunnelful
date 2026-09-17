@@ -705,3 +705,93 @@ struct CloudflaredConfigSerializer: Sendable {
         return " \(comment)"
     }
 }
+
+enum ConfigurationActivationPlanner {
+    static func routableHostnames(in document: CloudflaredConfigDocument) -> [String] {
+        var seen = Set<String>()
+        var hostnames: [String] = []
+        for rule in document.ingress where !rule.isCatchAll {
+            guard let hostname = normalizedHostname(rule.hostname) else { continue }
+            if seen.insert(hostname.lowercased()).inserted {
+                hostnames.append(hostname)
+            }
+        }
+        return hostnames
+    }
+
+    static func addedHostnames(
+        from previous: CloudflaredConfigDocument?,
+        to current: CloudflaredConfigDocument
+    ) -> [String] {
+        let previousHosts = Set((previous.map { routableHostnames(in: $0) } ?? []).map { $0.lowercased() })
+        return routableHostnames(in: current).filter { !previousHosts.contains($0.lowercased()) }
+    }
+
+    private struct IngressRouteSignature: Equatable {
+        let hostname: String
+        let path: String
+        let service: String
+    }
+
+    private static func ingressRoutes(in document: CloudflaredConfigDocument) -> [IngressRouteSignature] {
+        document.ingress
+            .filter { !$0.isCatchAll }
+            .map { rule in
+                IngressRouteSignature(
+                    hostname: rule.hostname?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "",
+                    path: rule.path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                    service: rule.service.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+            }
+    }
+
+    static func uniqueHostnames(_ hostnames: [String]) -> [String] {
+        var seen = Set<String>()
+        var unique: [String] = []
+        for hostname in hostnames {
+            guard let clean = normalizedHostname(hostname) else { continue }
+            if seen.insert(clean.lowercased()).inserted {
+                unique.append(clean)
+            }
+        }
+        return unique
+    }
+
+    static func plan(
+        previous: CloudflaredConfigDocument?,
+        current: CloudflaredConfigDocument,
+        dnsHostnames: [String],
+        tunnelName: String?,
+        connectorIsActive: Bool,
+        canStartConnector: Bool
+    ) -> ConfigurationActivationPlan {
+        let cleanTunnel = tunnelName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let usableTunnel = !cleanTunnel.isEmpty && !cleanTunnel.hasPrefix("-")
+        let dnsPlans = usableTunnel
+            ? uniqueHostnames(dnsHostnames).map { DNSRoutePlan(tunnelName: cleanTunnel, hostname: $0) }
+            : []
+        let routesChanged = previous.map { ingressRoutes(in: $0) } != ingressRoutes(in: current)
+
+        let connectorAction: ConfigurationActivationPlan.ConnectorFollowUp?
+        if usableTunnel, routesChanged {
+            if connectorIsActive {
+                connectorAction = .restart(tunnelName: cleanTunnel)
+            } else if canStartConnector, !dnsPlans.isEmpty {
+                connectorAction = .start(tunnelName: cleanTunnel)
+            } else {
+                connectorAction = nil
+            }
+        } else {
+            connectorAction = nil
+        }
+
+        return ConfigurationActivationPlan(dnsPlans: dnsPlans, connectorAction: connectorAction)
+    }
+
+    private static func normalizedHostname(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+}
