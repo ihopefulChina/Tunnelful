@@ -137,6 +137,16 @@ if [[ -z "$public_key" ]] || ! grep -Fq "\"$public_key\"" app/TunnelApp/Core/App
   echo "AppUpdater.publicEDKey 必须与 Product.xcconfig 的 SUPublicEDKey 一致。" >&2
   exit 1
 fi
+if ! grep -Fq "<string>$feed_url</string>" app/TunnelApp/Info.plist \
+  || ! grep -Fq "<string>$public_key</string>" app/TunnelApp/Info.plist; then
+  echo "Info.plist 必须包含与 Product.xcconfig 一致的 Sparkle 源地址和公钥。" >&2
+  exit 1
+fi
+if ! grep -Fq '<sparkle:shortVersionString>' appcast.xml \
+  || ! grep -Fq '<sparkle:shortVersionString>' website/public/appcast.xml; then
+  echo "仓库内 appcast.xml 必须是有效的 Sparkle 更新源。正式版本由发版工作流生成后再同步。" >&2
+  exit 1
+fi
 
 python3 "$script_dir/inject-appcast-hardware.py" --self-test
 

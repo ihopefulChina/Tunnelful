@@ -97,6 +97,10 @@ struct CloudflaredConfigDocument: Equatable, Sendable {
         self.sourceSnapshot = sourceSnapshot
     }
 
+    mutating func markPersistedOnDisk() {
+        originalTunnel = tunnel
+    }
+
     mutating func upsert(hostname: String, path: String? = nil, service: String) {
         let cleanHostname = hostname.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanPath = path?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -529,7 +533,7 @@ struct CloudflaredConfigSerializer: Sendable {
         let tunnelExists = containsTopLevelScalar("tunnel", in: prefixLines)
             || containsTopLevelScalar("tunnel", in: suffixLines)
 
-        if tunnelChanged {
+        if normalizedTunnel != nil || tunnelChanged {
             let prefixResult = replacingTopLevelScalar(
                 "tunnel",
                 value: normalizedTunnel,

@@ -736,6 +736,49 @@ final class ConfigurationTests: XCTestCase {
     }
 
     @MainActor
+    func testFailedPublishDoesNotClearExistingDNSPlan() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let configURL = root.appendingPathComponent("config.yml")
+        try Data(sample.utf8).write(to: configURL)
+        let defaultsName = "app.ihopeful.Tunnelful.publish-keep-plan-tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let model = AppModel(
+            processController: TunnelProcessController(),
+            configurationValidator: SuccessfulConfigurationValidator(),
+            initialInstallation: testInstallation,
+            userDefaults: defaults
+        )
+        model.importConfiguration(at: configURL)
+
+        await model.applyLocalPublish(
+            tunnelName: "sample-tunnel-id",
+            hostname: "route.example.com",
+            service: "http://127.0.0.1:3000"
+        )
+        let plan = try XCTUnwrap(model.pendingDNSPlan)
+
+        var draft = try XCTUnwrap(model.configurationDraft)
+        draft.ingress[0].service = "http://127.0.0.1:9999"
+        model.configurationDraft = draft
+
+        await model.applyLocalPublish(
+            tunnelName: "sample-tunnel-id",
+            hostname: "route.example.com",
+            service: "http://127.0.0.1:3000"
+        )
+
+        XCTAssertEqual(model.pendingDNSPlan, plan)
+        XCTAssertEqual(
+            model.alertMessage,
+            "Ingress 配置还有未保存的更改。请先处理这些更改，再发布服务。"
+        )
+    }
+
+    @MainActor
     func testSavingConfigurationInvalidatesPendingDNSPlanButDraftEditsDoNot() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

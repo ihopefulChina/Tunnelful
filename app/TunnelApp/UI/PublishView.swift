@@ -5,12 +5,12 @@ struct PublishView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var process: TunnelProcessController
 
-    @State private var tunnelName = ""
-    @State private var hostname = ""
-    @State private var service = ""
-    @State private var path = ""
-    @State private var copiedDNSCommand = false
-    @State private var copyFeedbackGeneration = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var tunnelName: String { model.publishDraft.tunnelName }
+    private var hostname: String { model.publishDraft.hostname }
+    private var service: String { model.publishDraft.service }
+    private var path: String { model.publishDraft.path }
 
     var body: some View {
         ScrollView {
@@ -32,7 +32,7 @@ struct PublishView: View {
         }
         .appPageBackground()
         .onAppear {
-            resetDefaultsFromCurrentConfiguration()
+            model.ensurePublishDraft()
         }
         .onChange(of: model.configDocument) { _, _ in
             if !model.publishDraftMatchesPendingPlanAndSavedConfiguration(
@@ -41,28 +41,25 @@ struct PublishView: View {
                 service: service,
                 path: path
             ) {
-                resetDefaultsFromCurrentConfiguration()
+                model.resetPublishDraftFromConfiguration()
             }
         }
         .onChange(of: model.availableTunnels) { _, _ in
             normalizeTunnelSelection()
         }
-        .onChange(of: tunnelName) { _, _ in
+        .onChange(of: model.publishDraft.tunnelName) { _, _ in
             invalidatePublishPlanForCurrentDraft(resetOrigin: false)
         }
-        .onChange(of: hostname) { _, _ in
+        .onChange(of: model.publishDraft.hostname) { _, _ in
             invalidatePublishPlanForCurrentDraft(resetOrigin: false)
         }
-        .onChange(of: service) { _, _ in
+        .onChange(of: model.publishDraft.service) { _, _ in
             invalidatePublishPlanForCurrentDraft()
         }
-        .onChange(of: path) { _, _ in invalidatePublishPlanForCurrentDraft(resetOrigin: false) }
-        .task(id: copyFeedbackGeneration) {
-            guard copiedDNSCommand else { return }
-            try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled else { return }
-            copiedDNSCommand = false
-        }
+        .onChange(of: model.publishDraft.path) { _, _ in invalidatePublishPlanForCurrentDraft(resetOrigin: false) }
+        .animation(AppMotion.content(reduceMotion), value: model.lastValidationMessage)
+        .animation(AppMotion.content(reduceMotion), value: model.lastDNSRouteMessage)
+        .animation(AppMotion.content(reduceMotion), value: model.pendingDNSPlan?.displayCommand)
     }
 
     private var tunnelSection: some View {
@@ -75,11 +72,11 @@ struct PublishView: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                 if model.availableTunnels.isEmpty {
-                    TextField("Tunnel 名称", text: $tunnelName, prompt: Text("dev"))
+                    TextField("Tunnel 名称", text: $model.publishDraft.tunnelName, prompt: Text("dev"))
                         .textFieldStyle(.roundedBorder)
                         .accessibilityHint(visibleTunnelError ?? "输入要发布的命名 Tunnel")
                 } else {
-                    Picker("Tunnel", selection: $tunnelName) {
+                    Picker("Tunnel", selection: $model.publishDraft.tunnelName) {
                         if !model.availableTunnels.contains(where: {
                             $0.matchesSelection(tunnelName)
                         }), !tunnelName.isEmpty {
@@ -109,7 +106,7 @@ struct PublishView: View {
             VStack(alignment: .leading, spacing: 10) {
                 labeledField(
                     title: "域名",
-                    text: $hostname,
+                    text: $model.publishDraft.hostname,
                     prompt: "preview.example.com",
                     error: visibleHostnameError,
                     contentType: .URL
@@ -117,7 +114,7 @@ struct PublishView: View {
 
                 labeledField(
                     title: "本地源站",
-                    text: $service,
+                    text: $model.publishDraft.service,
                     prompt: "http://127.0.0.1:3000",
                     error: visibleServiceError,
                     helper: "支持 HTTP/HTTPS、unix: 路径或 http_status。只有 HTTP(S) 可以预检。",
@@ -126,7 +123,7 @@ struct PublishView: View {
 
                 labeledField(
                     title: "路径匹配",
-                    text: $path,
+                    text: $model.publishDraft.path,
                     prompt: "^/api/.*",
                     helper: "可选。留空表示匹配该域名下的所有路径。"
                 )
@@ -189,11 +186,11 @@ struct PublishView: View {
                             )
                         }
                     } label: {
-                        if model.isApplyingConfiguration {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Label("保存本地配置", systemImage: "checkmark.shield")
-                        }
+                        BusyLabel(
+                            title: "保存本地配置",
+                            systemImage: "checkmark.shield",
+                            isBusy: model.isApplyingConfiguration
+                        )
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(
@@ -206,8 +203,9 @@ struct PublishView: View {
 
                     Spacer(minLength: 8)
 
-                    if case .running = process.processState {
+                    if model.isManagedConnectorActive {
                         Button("重新启动 Tunnel") { model.restartTunnel(named: tunnelName) }
+                            .disabled(model.isRoutingDNS || model.isApplyingConfiguration)
                             .help("使用当前命名 Tunnel 重新启动托管进程")
                     } else {
                         Button("启动 Tunnel") { model.startTunnel(named: tunnelName) }
@@ -218,27 +216,23 @@ struct PublishView: View {
 
                 if let plan = model.pendingDNSPlan {
                     HStack(spacing: 10) {
-                        Button {
-                            copy(plan.displayCommand)
-                        } label: {
-                            Label(
-                                copiedDNSCommand ? "已复制" : "复制 DNS 命令",
-                                systemImage: copiedDNSCommand ? "checkmark" : "doc.on.doc"
-                            )
+                        CopyConfirmationButton(
+                            title: "复制 DNS 命令",
+                            help: "复制将要执行的 cloudflared DNS 命令",
+                            confirmedHelp: "已复制到剪贴板",
+                            disabled: model.isRoutingDNS
+                        ) {
+                            ClipboardCopy.string(plan.displayCommand)
                         }
-                        .disabled(model.isRoutingDNS)
-                        .help("复制将要执行的 cloudflared DNS 命令")
-                        .accessibilityValue(copiedDNSCommand ? "已复制到剪贴板" : "")
 
                         Button {
                             model.presentPendingDNSConfirmation()
                         } label: {
-                            if model.isRoutingDNS {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Label("配置 DNS 路由…", systemImage: "network")
-                            }
+                            BusyLabel(
+                                title: "配置 DNS 路由…",
+                                systemImage: "network",
+                                isBusy: model.isRoutingDNS
+                            )
                         }
                         .disabled(model.isRoutingDNS)
                         .help("再次确认后才会在 Cloudflare 账户中创建 DNS CNAME 记录")
@@ -248,7 +242,7 @@ struct PublishView: View {
                 }
             }
 
-            if let message = model.lastValidationMessage {
+            if model.lastValidationSucceeded, let message = model.lastValidationMessage {
                 NoticeView(
                     kind: .success,
                     title: "本地配置已就绪",
@@ -416,19 +410,8 @@ struct PublishView: View {
         return "校验后写入本地 Ingress，并立刻请你确认 DNS 路由"
     }
 
-    private func copy(_ value: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(value, forType: .string)
-        copiedDNSCommand = true
-        copyFeedbackGeneration &+= 1
-    }
-
     private func resetDefaultsFromCurrentConfiguration() {
-        let rule = model.configDocument?.primaryIngressRule
-        tunnelName = model.preferredTunnelName ?? ""
-        hostname = rule?.hostname?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        service = rule?.service.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        path = rule?.path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        model.resetPublishDraftFromConfiguration()
     }
 
     private func invalidatePublishPlanForCurrentDraft(resetOrigin: Bool = true) {
@@ -442,12 +425,12 @@ struct PublishView: View {
     }
 
     private func normalizeTunnelSelection() {
-        let value = tunnelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = model.publishDraft.tunnelName.trimmingCharacters(in: .whitespacesAndNewlines)
         let matchesDeletedTunnel = model.tunnels.contains {
             !$0.isAvailable && $0.matchesSelection(value)
         }
         if value.isEmpty || matchesDeletedTunnel {
-            tunnelName = model.preferredTunnelName ?? ""
+            model.publishDraft.tunnelName = model.preferredTunnelName ?? ""
         }
     }
 

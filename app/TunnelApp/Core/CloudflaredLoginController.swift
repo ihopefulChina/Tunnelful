@@ -80,6 +80,7 @@ final class CloudflaredLoginController: ObservableObject {
             drainGroup.notify(queue: .main) {
                 Task { @MainActor [weak self] in
                     self?.finishLogin(
+                        ownedProcess: finishedProcess,
                         terminationStatus: terminationStatus,
                         stdout: outputCapture.value,
                         stderr: errorCapture.value,
@@ -93,11 +94,21 @@ final class CloudflaredLoginController: ObservableObject {
             cancellationRequested = false
             timedOut = false
             progressMessage = nil
-            self.process = process
-            state = .running
             drainGroup.enter()
             drainGroup.enter()
             try process.run()
+            if let statusURL = launch.statusURL {
+                defer { try? FileManager.default.removeItem(at: statusURL) }
+                if case let .failed(message) = ProcessLifetimeSupervisor.waitForChildStatus(at: statusURL) {
+                    process.terminationHandler = nil
+                    if process.isRunning {
+                        ProcessLifetimeSupervisor.killSupervisedProcessTree(process.processIdentifier)
+                    }
+                    throw CloudflaredError.processCouldNotStart(message)
+                }
+            }
+            self.process = process
+            state = .running
             scheduleTimeout()
             startReading(
                 standardOutput.fileHandleForReading,
@@ -112,8 +123,13 @@ final class CloudflaredLoginController: ObservableObject {
                 label: "\(AppIdentity.bundleIdentifier).login.stderr"
             )
         } catch {
+            process.terminationHandler = nil
             drainGroup.leave()
             drainGroup.leave()
+            try? standardOutput.fileHandleForReading.close()
+            try? standardOutput.fileHandleForWriting.close()
+            try? standardError.fileHandleForReading.close()
+            try? standardError.fileHandleForWriting.close()
             self.process = nil
             state = .failed("无法启动官方登录：\(error.localizedDescription)")
         }
@@ -166,11 +182,13 @@ final class CloudflaredLoginController: ObservableObject {
     }
 
     private func finishLogin(
+        ownedProcess: Process,
         terminationStatus: Int32,
         stdout: Data,
         stderr: Data,
         completion: @escaping @MainActor @Sendable () -> Void
     ) {
+        guard process === ownedProcess else { return }
         let wasCancelled = cancellationRequested
         let didTimeOut = timedOut
         process = nil

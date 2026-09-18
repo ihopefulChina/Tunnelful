@@ -33,10 +33,33 @@ enum AppShape {
 }
 
 enum AppMotion {
-    static let ui = Animation.spring(duration: 0.35, bounce: 0)
+    /// Occasional layout changes: notices, start/stop controls, added rules.
+    static let ui = Animation.spring(duration: 0.22, bounce: 0)
+    /// Label and icon swaps on a single control.
+    static let feedback = Animation.easeOut(duration: 0.16)
 
-    static func content(_ reduceMotion: Bool) -> Animation {
-        reduceMotion ? .easeInOut(duration: 0.18) : ui
+    static func content(_ reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : ui
+    }
+
+    static func feedback(_ reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : feedback
+    }
+
+    static func labelTransition(_ reduceMotion: Bool) -> ContentTransition {
+        reduceMotion ? .opacity : .interpolate
+    }
+
+    static func symbolTransition(_ reduceMotion: Bool) -> ContentTransition {
+        reduceMotion ? .opacity : .symbolEffect(.replace)
+    }
+}
+
+enum ClipboardCopy {
+    @discardableResult
+    static func string(_ value: String) -> Bool {
+        NSPasteboard.general.clearContents()
+        return NSPasteboard.general.setString(value, forType: .string)
     }
 }
 
@@ -230,6 +253,7 @@ private final class MainWindowRegistrationView: NSView {
 private struct ModelAlertPresenter: ViewModifier {
     @ObservedObject var model: AppModel
     @Environment(\.controlActiveState) private var controlActiveState
+    @State private var presenterID = UUID()
     @State private var ownsAlert = false
     @State private var ownsActivationPrompt = false
 
@@ -239,26 +263,35 @@ private struct ModelAlertPresenter: ViewModifier {
                 claimAlertIfPossible()
                 claimActivationPromptIfPossible()
             }
+            .onDisappear {
+                releaseOwnership()
+            }
             .onChange(of: model.alertMessage) { _, _ in
                 claimAlertIfPossible()
             }
             .onChange(of: model.activationPrompt) { _, _ in
                 claimActivationPromptIfPossible()
             }
-            .onChange(of: controlActiveState) { _, _ in
-                claimAlertIfPossible()
-                claimActivationPromptIfPossible()
+            .onChange(of: controlActiveState) { _, isActive in
+                if isActive == .key {
+                    claimAlertIfPossible()
+                    claimActivationPromptIfPossible()
+                } else {
+                    releaseOwnership()
+                }
             }
             .alert("需要处理", isPresented: Binding(
                 get: { ownsAlert && model.alertMessage != nil },
                 set: { isPresented in
                     guard !isPresented else { return }
                     ownsAlert = false
+                    model.releaseAlertPresenter(presenterID)
                     model.alertMessage = nil
                 }
             )) {
                 Button("好", role: .cancel) {
                     ownsAlert = false
+                    model.releaseAlertPresenter(presenterID)
                     model.alertMessage = nil
                 }
             } message: {
@@ -271,7 +304,7 @@ private struct ModelAlertPresenter: ViewModifier {
                     set: { isPresented in
                         guard !isPresented else { return }
                         ownsActivationPrompt = false
-                        model.dismissActivationPrompt()
+                        model.releaseActivationPresenter(presenterID)
                     }
                 ),
                 titleVisibility: .visible
@@ -279,10 +312,12 @@ private struct ModelAlertPresenter: ViewModifier {
                 if let prompt = model.activationPrompt {
                     Button(prompt.confirmTitle) {
                         ownsActivationPrompt = false
+                        model.releaseActivationPresenter(presenterID)
                         model.confirmActivationPrompt()
                     }
                     Button(prompt.cancelTitle, role: .cancel) {
                         ownsActivationPrompt = false
+                        model.releaseActivationPresenter(presenterID)
                         model.dismissActivationPrompt()
                     }
                 }
@@ -294,7 +329,8 @@ private struct ModelAlertPresenter: ViewModifier {
     private func claimAlertIfPossible() {
         guard !ownsAlert,
               controlActiveState == .key,
-              model.alertMessage != nil else {
+              model.alertMessage != nil,
+              model.claimAlertPresenter(presenterID) else {
             return
         }
         ownsAlert = true
@@ -303,10 +339,22 @@ private struct ModelAlertPresenter: ViewModifier {
     private func claimActivationPromptIfPossible() {
         guard !ownsActivationPrompt,
               controlActiveState == .key,
-              model.activationPrompt != nil else {
+              model.activationPrompt != nil,
+              model.claimActivationPresenter(presenterID) else {
             return
         }
         ownsActivationPrompt = true
+    }
+
+    private func releaseOwnership() {
+        if ownsAlert {
+            ownsAlert = false
+            model.releaseAlertPresenter(presenterID)
+        }
+        if ownsActivationPrompt {
+            ownsActivationPrompt = false
+            model.releaseActivationPresenter(presenterID)
+        }
     }
 }
 
@@ -620,6 +668,70 @@ struct IconToolButton: View {
     }
 }
 
+struct BusyLabel: View {
+    let title: String
+    let systemImage: String
+    var isBusy = false
+
+    var body: some View {
+        Label {
+            Text(title)
+        } icon: {
+            ZStack {
+                Image(systemName: systemImage)
+                    .opacity(isBusy ? 0 : 1)
+                if isBusy {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.primary)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+    }
+}
+
+struct CopyConfirmationButton: View {
+    var title: String
+    var confirmedTitle: String = "已复制"
+    var systemImage: String = "doc.on.doc"
+    var confirmedSystemImage: String = "checkmark"
+    var help: String
+    var confirmedHelp: String?
+    var disabled = false
+    let copy: () -> Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isConfirmed = false
+    @State private var generation = 0
+
+    var body: some View {
+        Button {
+            guard copy() else { return }
+            isConfirmed = true
+            generation &+= 1
+        } label: {
+            Label {
+                Text(isConfirmed ? confirmedTitle : title)
+                    .contentTransition(AppMotion.labelTransition(reduceMotion))
+            } icon: {
+                Image(systemName: isConfirmed ? confirmedSystemImage : systemImage)
+                    .contentTransition(AppMotion.symbolTransition(reduceMotion))
+            }
+        }
+        .disabled(disabled)
+        .help(isConfirmed ? (confirmedHelp ?? "已复制到剪贴板") : help)
+        .accessibilityValue(isConfirmed ? "已复制到剪贴板" : "")
+        .animation(AppMotion.feedback(reduceMotion), value: isConfirmed)
+        .task(id: generation) {
+            guard isConfirmed else { return }
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            isConfirmed = false
+        }
+    }
+}
+
 struct AppToolbarProgressButton: View {
     let title: String
     let systemImage: String
@@ -631,18 +743,7 @@ struct AppToolbarProgressButton: View {
 
     var body: some View {
         Button(action: action) {
-            Label {
-                Text(title)
-            } icon: {
-                ZStack {
-                    Image(systemName: systemImage)
-                        .opacity(isBusy ? 0 : 1)
-                    if isBusy {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
-            }
+            BusyLabel(title: title, systemImage: systemImage, isBusy: isBusy)
         }
         .disabled(disabled || isBusy)
         .help(help)

@@ -25,12 +25,26 @@ export function readStoredTheme(): SiteTheme {
   }
 }
 
+function resolvedThemeColor(theme: SiteTheme) {
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = theme === 'dark' || (theme === 'system' && prefersDark);
+  return isDark ? '#181816' : '#f8f8f5';
+}
+
+function syncThemeColor(theme: SiteTheme) {
+  const color = resolvedThemeColor(theme);
+  document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+    meta.setAttribute('content', color);
+  });
+}
+
 export function applyTheme(theme: SiteTheme) {
   if (theme === 'system') {
     document.documentElement.removeAttribute('data-theme');
   } else {
     document.documentElement.setAttribute('data-theme', theme);
   }
+  syncThemeColor(theme);
   window.dispatchEvent(new Event('tunnelful-theme'));
 }
 

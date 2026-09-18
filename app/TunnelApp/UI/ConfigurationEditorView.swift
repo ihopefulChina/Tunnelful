@@ -2,6 +2,9 @@ import SwiftUI
 
 struct ConfigurationEditorView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var yamlPreview = ""
+    @State private var cachedValidationIssues: [ConfigValidationIssue] = []
 
     private var draftDocument: CloudflaredConfigDocument? {
         get { model.configurationDraft }
@@ -36,6 +39,10 @@ struct ConfigurationEditorView: View {
             if model.configurationDraft == nil {
                 synchronizeDraft(with: model.configDocument)
             }
+            refreshEditorCaches(draftDocument)
+        }
+        .onChange(of: model.configurationDraft) { _, document in
+            refreshEditorCaches(document)
         }
     }
 
@@ -98,6 +105,7 @@ struct ConfigurationEditorView: View {
                         ruleEditor(rule, in: document)
                     }
                 }
+                .animation(AppMotion.content(reduceMotion), value: document.ingress.map(\.id))
             }
 
             if !globalIssues.isEmpty {
@@ -240,7 +248,7 @@ struct ConfigurationEditorView: View {
             }
 
             ScrollView {
-                Text(CloudflaredConfigSerializer().serialize(document))
+                Text(yamlPreview)
                     .font(.system(.callout, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
@@ -282,16 +290,20 @@ struct ConfigurationEditorView: View {
         HStack(spacing: 12) {
             Image(systemName: saveStatusSymbol)
                 .foregroundStyle(saveStatusColor)
+                .contentTransition(AppMotion.symbolTransition(reduceMotion))
+                .animation(AppMotion.feedback(reduceMotion), value: saveStatusSymbol)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(saveStatusTitle)
                     .font(.callout.weight(.medium))
+                    .contentTransition(AppMotion.labelTransition(reduceMotion))
                 Text(saveStatusDetail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+            .animation(AppMotion.feedback(reduceMotion), value: saveStatusTitle)
 
             Spacer()
 
@@ -305,13 +317,12 @@ struct ConfigurationEditorView: View {
             Button {
                 saveDraft()
             } label: {
-                if model.isApplyingConfiguration {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(minWidth: 122)
-                } else {
-                    Label("保存并官方校验", systemImage: "checkmark.shield")
-                }
+                BusyLabel(
+                    title: "保存并官方校验",
+                    systemImage: "checkmark.shield",
+                    isBusy: model.isApplyingConfiguration
+                )
+                .frame(minWidth: 122)
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut("s", modifiers: .command)
@@ -326,7 +337,7 @@ struct ConfigurationEditorView: View {
     }
 
     private var validationIssues: [ConfigValidationIssue] {
-        draftDocument?.validationIssues() ?? []
+        cachedValidationIssues
     }
 
     private var globalIssues: [ConfigValidationIssue] {
@@ -407,8 +418,7 @@ struct ConfigurationEditorView: View {
             },
             set: { value in
                 updateRule(ruleID) { rule in
-                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                    rule[keyPath: keyPath] = trimmed.isEmpty ? nil : trimmed
+                    rule[keyPath: keyPath] = value.isEmpty ? nil : value
                 }
             }
         )
@@ -516,6 +526,12 @@ struct ConfigurationEditorView: View {
 
     private func synchronizeDraft(with document: CloudflaredConfigDocument?) {
         draftDocument = document
+        refreshEditorCaches(document)
+    }
+
+    private func refreshEditorCaches(_ document: CloudflaredConfigDocument?) {
+        cachedValidationIssues = document?.validationIssues() ?? []
+        yamlPreview = document.map { CloudflaredConfigSerializer().serialize($0) } ?? ""
     }
 
     private func panel<Content: View>(@ViewBuilder content: () -> Content) -> some View {

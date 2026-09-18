@@ -15,6 +15,7 @@ function Brand() {
         height={28}
         alt=""
         aria-hidden="true"
+        priority
         unoptimized
       />
       <span>Tunnelful</span>
@@ -63,7 +64,10 @@ const features = [
 
 export default function Home() {
   return (
-    <main id="top">
+    <>
+      <a className="skip-link" href="#hero-title">
+        跳到主要内容
+      </a>
       <header className="site-header">
         <nav className="site-nav" aria-label="主导航">
           <a className="brand-link" href="#top" aria-label="Tunnelful 首页">
@@ -73,108 +77,138 @@ export default function Home() {
             <a href="#features">功能</a>
             <a href={repositoryURL}>GitHub</a>
             <ThemeToggle />
-            <a className="nav-download" href="#downloads">下载</a>
+            <a className="nav-download" href="#downloads">
+              下载
+            </a>
           </div>
         </nav>
       </header>
+      <main id="top">
+        <section className="hero" aria-labelledby="hero-title">
+          <p className="eyebrow">macOS 菜单栏工具</p>
+          <h1 id="hero-title">
+            <span>把 Cloudflare Tunnel，</span>
+            <span>交给一个真正的 Mac 应用。</span>
+          </h1>
+          <p className="hero-description">
+            检查环境，安全编辑 Ingress，保存后确认 DNS 路由，必要时重启
+            Tunnel。分别查看进程、Edge 与源站状态。 窗口关闭后仍常驻菜单栏。
+          </p>
+          <DownloadChooser />
+          <div className="hero-actions hero-secondary-action">
+            <a className="text-link" href={repositoryURL}>
+              查看源码{' '}
+              <span className="text-link-arrow" aria-hidden="true">
+                →
+              </span>
+            </a>
+          </div>
 
-      <section className="hero" aria-labelledby="hero-title">
-        <p className="eyebrow">macOS 菜单栏工具</p>
-        <h1 id="hero-title">
-          <span>把 Cloudflare Tunnel，</span>
-          <span>交给一个真正的 Mac 应用。</span>
-        </h1>
-        <p className="hero-description">
-          检查环境，安全编辑 Ingress，保存后确认 DNS 路由，必要时重启 Tunnel。分别查看进程、Edge 与源站状态。
-          窗口关闭后仍常驻菜单栏。
-        </p>
-        <DownloadChooser />
-        <div className="hero-actions hero-secondary-action">
-          <a className="text-link" href={repositoryURL}>查看源码 <span aria-hidden="true">→</span></a>
-        </div>
+          <figure className="product-figure">
+            <div className="product-frame">
+              <Image
+                className="product-image product-image-light"
+                src={`${basePath}/tunnelful-window-v0.1.10.png`}
+                width={2240}
+                height={1560}
+                alt="Tunnelful 主窗口：左侧按状态、配置与诊断分组，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
+                priority
+                unoptimized
+              />
+              <Image
+                className="product-image product-image-dark"
+                src={`${basePath}/tunnelful-window-dark-v0.1.10.png`}
+                width={2240}
+                height={1560}
+                alt=""
+                aria-hidden="true"
+                unoptimized
+              />
+            </div>
+            <figcaption>
+              {releaseVersion} 使用 Xcode 26 与 macOS 26 SDK 构建；在 macOS 26
+              上呈现图中的原生侧栏。 macOS 14 与 macOS 15
+              会采用对应系统的原生样式。
+            </figcaption>
+          </figure>
+        </section>
 
-        <figure className="product-figure">
+        <section
+          className="features"
+          id="features"
+          aria-labelledby="features-title"
+        >
+          <header className="section-heading">
+            <p className="eyebrow">为日常使用而收敛</p>
+            <h2 id="features-title">
+              少一点命令，
+              <br />
+              多一点确定。
+            </h2>
+          </header>
+          <div className="feature-list">
+            {features.map((feature) => (
+              <article className="feature-row" key={feature.label}>
+                <p className="feature-label">{feature.label}</p>
+                <h3>{feature.title}</h3>
+                <p>{feature.description}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="trust" aria-labelledby="trust-title">
+          <div className="trust-copy">
+            <p className="eyebrow">本地优先 · 开源透明</p>
+            <h2 id="trust-title">
+              <span className="trust-title-line">配置留在本机，</span>
+              <span className="trust-title-line">行为公开可查。</span>
+            </h2>
+          </div>
+          <div className="trust-details">
+            <p>
+              Tunnelful 不包含遥测、广告或分析 SDK。命令通过参数数组直接执行，
+              日志会尽力遮罩令牌与用户目录。
+            </p>
+            <p>
+              Tunnel credentials 只检查文件元数据；cert.pem 仅在本机校验结构。
+              只有在你单独确认后，应用才会调用官方 CLI 修改远端 DNS。
+            </p>
+            <p>
+              项目采用 Apache-2.0
+              许可。每条命令、每次配置写入与当前限制都能在源码中检查。
+            </p>
+            <a
+              className="text-link"
+              href={`${repositoryURL}/blob/main/SECURITY.md`}
+            >
+              阅读安全说明{' '}
+              <span className="text-link-arrow" aria-hidden="true">
+                →
+              </span>
+            </a>
+          </div>
+        </section>
+
+        <section className="final-cta" aria-labelledby="download-title">
           <Image
-            className="product-image product-image-light"
-            src={`${basePath}/tunnelful-window-v0.1.10.png`}
-            width={2240}
-            height={1560}
-            alt="Tunnelful 浅色主窗口：左侧按状态、配置与诊断分组，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
-            priority
+            src={`${basePath}/tunnelful-icon.png`}
+            width={76}
+            height={76}
+            alt=""
+            aria-hidden="true"
             unoptimized
           />
-          <Image
-            className="product-image product-image-dark"
-            src={`${basePath}/tunnelful-window-dark-v0.1.10.png`}
-            width={2240}
-            height={1560}
-            alt="Tunnelful 深色主窗口：左侧按状态、配置与诊断分组，右侧概览本地进程、Cloudflare Edge、源站与运行环境。"
-            unoptimized
-          />
-          <figcaption>
-            {releaseVersion} 使用 Xcode 26 与 macOS 26 SDK 构建；在 macOS 26 上呈现图中的原生侧栏。
-            macOS 14 与 macOS 15 会采用对应系统的原生样式。
-          </figcaption>
-        </figure>
-      </section>
-
-      <section className="features" id="features" aria-labelledby="features-title">
-        <header className="section-heading">
-          <p className="eyebrow">为日常使用而收敛</p>
-          <h2 id="features-title">少一点命令，<br />多一点确定。</h2>
-        </header>
-        <div className="feature-list">
-          {features.map((feature) => (
-            <article className="feature-row" key={feature.label}>
-              <p className="feature-label">{feature.label}</p>
-              <h3>{feature.title}</h3>
-              <p>{feature.description}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="trust" aria-labelledby="trust-title">
-        <div className="trust-copy">
-          <p className="eyebrow">本地优先 · 开源透明</p>
-          <h2 id="trust-title">
-            <span className="trust-title-line">配置留在本机，</span>
-            <span className="trust-title-line">行为公开可查。</span>
-          </h2>
-        </div>
-        <div className="trust-details">
-          <p>
-            Tunnelful 不包含遥测、广告或分析 SDK。命令通过参数数组直接执行，
-            日志会尽力遮罩令牌与用户目录。
-          </p>
-          <p>
-            Tunnel credentials 只检查文件元数据；cert.pem 仅在本机校验结构。
-            只有在你单独确认后，应用才会调用官方 CLI 修改远端 DNS。
-          </p>
-          <p>
-            项目采用 Apache-2.0 许可。每条命令、每次配置写入与当前限制都能在源码中检查。
-          </p>
-          <a className="text-link" href={`${repositoryURL}/blob/main/SECURITY.md`}>
-            阅读安全说明 <span aria-hidden="true">→</span>
+          <h2 id="download-title">让 Tunnel 回到 Mac 的使用方式。</h2>
+          <p>免费、开源。分别为 Apple 芯片与 Intel Mac 提供原生安装包。</p>
+          <a className="button button-primary" href="#downloads">
+            选择 Tunnelful {releaseVersion}
           </a>
-        </div>
-      </section>
-
-      <section className="final-cta" aria-labelledby="download-title">
-        <Image
-          src={`${basePath}/tunnelful-icon.png`}
-          width={76}
-          height={76}
-          alt=""
-          aria-hidden="true"
-          unoptimized
-        />
-        <h2 id="download-title">让 Tunnel 回到 Mac 的使用方式。</h2>
-        <p>免费、开源。分别为 Apple 芯片与 Intel Mac 提供原生安装包。</p>
-        <a className="button button-primary" href="#downloads">选择 Tunnelful {releaseVersion}</a>
-        <a className="release-link" href={releaseTagURL}>查看发布说明</a>
-      </section>
-
+          <a className="release-link" href={releaseTagURL}>
+            查看发布说明
+          </a>
+        </section>
+      </main>
       <footer className="site-footer">
         <Brand />
         <p>
@@ -185,6 +219,6 @@ export default function Home() {
           <a href={`${repositoryURL}/issues`}>问题反馈</a>
         </div>
       </footer>
-    </main>
+    </>
   );
 }

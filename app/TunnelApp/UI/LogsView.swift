@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct LogsView: View {
@@ -6,8 +5,6 @@ struct LogsView: View {
     @State private var searchText = ""
     @State private var stream: StreamFilter = .all
     @State private var isConfirmingClear = false
-    @State private var copiedLogs = false
-    @State private var copyFeedbackGeneration = 0
 
     private enum StreamFilter: String, CaseIterable, Identifiable {
         case all = "全部"
@@ -83,17 +80,14 @@ struct LogsView: View {
             }
 
             ToolbarItem {
-                Button {
+                CopyConfirmationButton(
+                    title: "复制",
+                    help: "复制当前筛选后的日志",
+                    confirmedHelp: "已复制当前筛选后的日志",
+                    disabled: filteredLogs.isEmpty
+                ) {
                     copyLogs()
-                } label: {
-                    Label(
-                        copiedLogs ? "已复制" : "复制",
-                        systemImage: copiedLogs ? "checkmark" : "doc.on.doc"
-                    )
                 }
-                .disabled(filteredLogs.isEmpty)
-                .help(copiedLogs ? "已复制当前筛选后的日志" : "复制当前筛选后的日志")
-                .accessibilityValue(copiedLogs ? "已复制到剪贴板" : "")
             }
 
             ToolbarItem {
@@ -118,23 +112,13 @@ struct LogsView: View {
                 }
             }
         }
-        .task(id: copyFeedbackGeneration) {
-            guard copiedLogs else { return }
-            try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled else { return }
-            copiedLogs = false
-        }
     }
 
-    private func copyLogs() {
+    private func copyLogs() -> Bool {
         let text = filteredLogs.map {
             "\($0.timestamp.formatted(.iso8601)) [\($0.stream.rawValue)] \($0.message)"
         }.joined(separator: "\n")
-        NSPasteboard.general.clearContents()
-        if NSPasteboard.general.setString(text, forType: .string) {
-            copiedLogs = true
-            copyFeedbackGeneration &+= 1
-        }
+        return ClipboardCopy.string(text)
     }
 
     private var emptyTitle: String {

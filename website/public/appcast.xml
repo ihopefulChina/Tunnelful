@@ -3,38 +3,34 @@
     <channel>
         <title>Tunnelful</title>
         <item>
-            <title>0.1.12</title>
-            <pubDate>Wed, 09 Sep 2026 06:01:41 +0000</pubDate>
-            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.12</link>
+            <title>0.1.13</title>
+            <pubDate>Thu, 17 Sep 2026 04:31:25 +0000</pubDate>
+            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.13</link>
             <sparkle:informationalUpdate>
                 <sparkle:belowVersion>26</sparkle:belowVersion>
             </sparkle:informationalUpdate>
-            <sparkle:version>31</sparkle:version>
-            <sparkle:shortVersionString>0.1.12</sparkle:shortVersionString>
+            <sparkle:version>33</sparkle:version>
+            <sparkle:shortVersionString>0.1.13</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.12
+            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.13
 
-Tunnelful `0.1.12` 继续支持 Apple 芯片与 Intel Mac，最低系统版本仍为 macOS 14。
+Tunnelful `0.1.13` 继续支持 Apple 芯片与 Intel Mac，最低系统版本仍为 macOS 14。
 
 ## 本次变化
 
-- 强制退出或崩溃时，由应用启动的 `cloudflared` 会随看门狗一起结束，避免留下孤儿进程。
-- 官方登录会在等待期间显示浏览器地址，并在失败或超时时保留脱敏后的提示。
-- 启动、重启和开机自启只接受当前配置中的 `tunnel` 或 `credentials-file` 对应的 Tunnel，不再猜测 `dev`。
-- 概览页在启动中也会显示停止与重新启动；发布页接受 `unix:` 与 `http_status` 源站。
-- 官网下载入口跟随仓库版本号；芯片检测冲突时不再误标“推荐”。
-- 启动子进程时额外剥离 `DYLD_*` / `LD_*`。Intel 更新条目声明 `sparkle:hardwareRequirements=x86_64`。
+- 保存 Ingress 或发布服务后，会立刻弹出 DNS 路由确认；新增 hostname 不必再到发布页找按钮。远端记录仍需确认后才执行，且不会覆盖同名记录。
+- 本地规则变化且 Tunnel 已在运行时，确认 DNS 后会接着询问是否重启连接器；新域名在 Tunnel 未启动时会询问是否启动。
 
 ## 升级说明
 
-- 已安装 0.1.10 或 0.1.11：可在 Tunnelful 中选择“检查更新…”，也可手动下载对应芯片的 0.1.12 DMG 替换现有应用。
-- 已安装 0.1.9 或更早版本：旧版使用不同的 Bundle ID，应用内更新只会显示迁移说明。请先退出旧版；若启用了“登录 Mac 时自动打开”，请先在旧版设置中关闭它，再手动安装 0.1.12。其余偏好设置会自动迁移。
+- 已安装 0.1.10、0.1.11 或 0.1.12：可在 Tunnelful 中选择“检查更新…”，也可手动下载对应芯片的 0.1.13 DMG 替换现有应用。
+- 已安装 0.1.9 或更早版本：旧版使用不同的 Bundle ID，应用内更新只会显示迁移说明。请先退出旧版；若启用了“登录 Mac 时自动打开”，请先在旧版设置中关闭它，再手动安装 0.1.13。其余偏好设置会自动迁移。
 
-## 下载 Tunnelful 0.1.12
+## 下载 Tunnelful 0.1.13
 
-- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.12/Tunnelful-0.1.12-arm64.dmg)
-- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.12/Tunnelful-0.1.12-x86_64.dmg)
+- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.13/Tunnelful-0.1.13-arm64.dmg)
+- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.13/Tunnelful-0.1.13-x86_64.dmg)
 
 两个安装包都需要 macOS 14 或更高版本。不确定芯片类型时，可在苹果菜单的「关于本机」中查看“芯片”或“处理器”。
 
@@ -49,8 +45,8 @@ Tunnelful `0.1.12` 继续支持 Apple 芯片与 Intel Mac，最低系统版本�
 校验下载文件：
 
 ```bash
-shasum -a 256 -c Tunnelful-0.1.12-arm64.dmg.sha256
-shasum -a 256 -c Tunnelful-0.1.12-x86_64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.13-arm64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.13-x86_64.dmg.sha256
 ```
 
 ## 分发方式与首次打开
@@ -73,40 +69,36 @@ shasum -a 256 -c Tunnelful-0.1.12-x86_64.dmg.sha256
 - 日志脱敏属于防误操作保护；分享前仍需人工检查。
 - 构建与签名验证通过不等于真实 Cloudflare 账号联调或生产可用性验证通过。
 ]]></description>
-            <enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.12/Tunnelful-0.1.12-arm64.dmg" length="1487006" type="application/octet-stream" sparkle:edSignature="BaMX5hoXAeo1a738g2LZACkzfCWFgMiULxFzrnuT872AyYMV9vRaFwrAQShEpcNziuX2EayEiU9+PfXSha5gDQ=="/>
+            <enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.13/Tunnelful-0.1.13-arm64.dmg" length="1503838" type="application/octet-stream" sparkle:edSignature="3bDHxTQBa5T2R5r+RJns7fsHfPc8Bmd/mE9rHnoUzx0SyNMz7zBWRFlVn0LvUDQnVp/L0P0rn6JT33ct/A4oAA=="/>
         </item>
         <item>
-            <title>0.1.12</title>
-            <pubDate>Wed, 09 Sep 2026 06:02:23 +0000</pubDate>
-            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.12</link>
+            <title>0.1.13</title>
+            <pubDate>Thu, 17 Sep 2026 04:31:57 +0000</pubDate>
+            <link>https://github.com/ihopefulChina/Tunnelful/releases/tag/v0.1.13</link>
             <sparkle:informationalUpdate>
                 <sparkle:belowVersion>26</sparkle:belowVersion>
             </sparkle:informationalUpdate>
-            <sparkle:version>30</sparkle:version>
-            <sparkle:shortVersionString>0.1.12</sparkle:shortVersionString>
+            <sparkle:version>32</sparkle:version>
+            <sparkle:shortVersionString>0.1.13</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.12
+            <description sparkle:format="markdown"><![CDATA[# Tunnelful 0.1.13
 
-Tunnelful `0.1.12` 继续支持 Apple 芯片与 Intel Mac，最低系统版本仍为 macOS 14。
+Tunnelful `0.1.13` 继续支持 Apple 芯片与 Intel Mac，最低系统版本仍为 macOS 14。
 
 ## 本次变化
 
-- 强制退出或崩溃时，由应用启动的 `cloudflared` 会随看门狗一起结束，避免留下孤儿进程。
-- 官方登录会在等待期间显示浏览器地址，并在失败或超时时保留脱敏后的提示。
-- 启动、重启和开机自启只接受当前配置中的 `tunnel` 或 `credentials-file` 对应的 Tunnel，不再猜测 `dev`。
-- 概览页在启动中也会显示停止与重新启动；发布页接受 `unix:` 与 `http_status` 源站。
-- 官网下载入口跟随仓库版本号；芯片检测冲突时不再误标“推荐”。
-- 启动子进程时额外剥离 `DYLD_*` / `LD_*`。Intel 更新条目声明 `sparkle:hardwareRequirements=x86_64`。
+- 保存 Ingress 或发布服务后，会立刻弹出 DNS 路由确认；新增 hostname 不必再到发布页找按钮。远端记录仍需确认后才执行，且不会覆盖同名记录。
+- 本地规则变化且 Tunnel 已在运行时，确认 DNS 后会接着询问是否重启连接器；新域名在 Tunnel 未启动时会询问是否启动。
 
 ## 升级说明
 
-- 已安装 0.1.10 或 0.1.11：可在 Tunnelful 中选择“检查更新…”，也可手动下载对应芯片的 0.1.12 DMG 替换现有应用。
-- 已安装 0.1.9 或更早版本：旧版使用不同的 Bundle ID，应用内更新只会显示迁移说明。请先退出旧版；若启用了“登录 Mac 时自动打开”，请先在旧版设置中关闭它，再手动安装 0.1.12。其余偏好设置会自动迁移。
+- 已安装 0.1.10、0.1.11 或 0.1.12：可在 Tunnelful 中选择“检查更新…”，也可手动下载对应芯片的 0.1.13 DMG 替换现有应用。
+- 已安装 0.1.9 或更早版本：旧版使用不同的 Bundle ID，应用内更新只会显示迁移说明。请先退出旧版；若启用了“登录 Mac 时自动打开”，请先在旧版设置中关闭它，再手动安装 0.1.13。其余偏好设置会自动迁移。
 
-## 下载 Tunnelful 0.1.12
+## 下载 Tunnelful 0.1.13
 
-- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.12/Tunnelful-0.1.12-arm64.dmg)
-- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.12/Tunnelful-0.1.12-x86_64.dmg)
+- [Apple Silicon 版（M 系列芯片）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.13/Tunnelful-0.1.13-arm64.dmg)
+- [Intel 版（x86_64）](https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.13/Tunnelful-0.1.13-x86_64.dmg)
 
 两个安装包都需要 macOS 14 或更高版本。不确定芯片类型时，可在苹果菜单的「关于本机」中查看“芯片”或“处理器”。
 
@@ -121,8 +113,8 @@ Tunnelful `0.1.12` 继续支持 Apple 芯片与 Intel Mac，最低系统版本�
 校验下载文件：
 
 ```bash
-shasum -a 256 -c Tunnelful-0.1.12-arm64.dmg.sha256
-shasum -a 256 -c Tunnelful-0.1.12-x86_64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.13-arm64.dmg.sha256
+shasum -a 256 -c Tunnelful-0.1.13-x86_64.dmg.sha256
 ```
 
 ## 分发方式与首次打开
@@ -146,7 +138,7 @@ shasum -a 256 -c Tunnelful-0.1.12-x86_64.dmg.sha256
 - 构建与签名验证通过不等于真实 Cloudflare 账号联调或生产可用性验证通过。
 ]]></description>
                         <sparkle:hardwareRequirements>x86_64</sparkle:hardwareRequirements>
-<enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.12/Tunnelful-0.1.12-x86_64.dmg" length="1614233" type="application/octet-stream" sparkle:edSignature="+1xGVEShZ13533UJaqlvM7Lt4imThiI3p37GV0cQuWX9IGW4b/M0jR9/D14FxA8KlaEVtN76rn24HdFdrhUFDQ=="/>
+<enclosure url="https://github.com/ihopefulChina/Tunnelful/releases/download/v0.1.13/Tunnelful-0.1.13-x86_64.dmg" length="1627711" type="application/octet-stream" sparkle:edSignature="9+sAz8UX/gGcirT/DsTBZuo3t2vCMugn8VgkEtwocP6/pubkJaSGH64A47CjStoy5Q53Jax88j4NvvNgjzRrAw=="/>
         </item>
     </channel>
 </rss>

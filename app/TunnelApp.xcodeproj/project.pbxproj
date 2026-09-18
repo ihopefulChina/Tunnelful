@@ -42,6 +42,7 @@
 		010000000000000000000022 /* EdgeLogInterpreterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000025 /* EdgeLogInterpreterTests.swift */; };
 		010000000000000000000023 /* ProcessLifetimeSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000027 /* ProcessLifetimeSupervisor.swift */; };
 		010000000000000000000024 /* ProcessPipeReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000028 /* ProcessPipeReader.swift */; };
+		010000000000000000000025 /* ProcessCoordination.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000029 /* ProcessCoordination.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -94,6 +95,8 @@
 		020000000000000000000026 /* Tunnelful.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tunnelful.entitlements; sourceTree = "<group>"; };
 		020000000000000000000027 /* ProcessLifetimeSupervisor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessLifetimeSupervisor.swift; sourceTree = "<group>"; };
 		020000000000000000000028 /* ProcessPipeReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessPipeReader.swift; sourceTree = "<group>"; };
+		020000000000000000000029 /* ProcessCoordination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessCoordination.swift; sourceTree = "<group>"; };
+		02000000000000000000002A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -116,6 +119,7 @@
 			isa = PBXGroup;
 			children = (
 				02000000000000000000000B /* TunnelAppMain.swift */,
+				02000000000000000000002A /* Info.plist */,
 				020000000000000000000026 /* Tunnelful.entitlements */,
 				050000000000000000000003 /* Core */,
 				050000000000000000000004 /* UI */,
@@ -141,6 +145,7 @@
 				020000000000000000000008 /* CloudflaredClient.swift */,
 				020000000000000000000009 /* TunnelProcessController.swift */,
 				020000000000000000000027 /* ProcessLifetimeSupervisor.swift */,
+				020000000000000000000029 /* ProcessCoordination.swift */,
 				020000000000000000000028 /* ProcessPipeReader.swift */,
 				02000000000000000000000A /* OriginHealthChecker.swift */,
 			);
@@ -288,6 +293,7 @@
 				01000000000000000000001D, 01000000000000000000001E,
 				01000000000000000000001F, 010000000000000000000020,
 				010000000000000000000023, 010000000000000000000024,
+				010000000000000000000025,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

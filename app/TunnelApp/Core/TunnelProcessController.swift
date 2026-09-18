@@ -234,6 +234,7 @@ final class TunnelProcessController: ObservableObject {
     private let redactor: any LogRedacting
     private let terminationGracePeriod: TimeInterval
     private var process: Process?
+    private var runLock: ExclusiveFileLock?
     private var pendingRestart: LaunchRequest?
     private var shutdownCompletion: (() -> Void)?
     private var expectedTerminationPID: Int32?
@@ -257,6 +258,11 @@ final class TunnelProcessController: ObservableObject {
         guard process == nil else { throw CloudflaredError.processAlreadyRunning }
         guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
             throw CloudflaredError.invalidExecutable(executableURL)
+        }
+        let acquiredLock = tunnelName.flatMap(TunnelRunLock.tryAcquire)
+        if let tunnelName, !tunnelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           acquiredLock == nil {
+            throw CloudflaredError.processAlreadyRunning
         }
 
         let newProcess = Process()
@@ -308,7 +314,18 @@ final class TunnelProcessController: ObservableObject {
 
         do {
             try newProcess.run()
+            if let statusURL = launch.statusURL {
+                defer { try? FileManager.default.removeItem(at: statusURL) }
+                if case let .failed(message) = ProcessLifetimeSupervisor.waitForChildStatus(at: statusURL) {
+                    newProcess.terminationHandler = nil
+                    if newProcess.isRunning {
+                        ProcessLifetimeSupervisor.killSupervisedProcessTree(newProcess.processIdentifier)
+                    }
+                    throw CloudflaredError.processCouldNotStart(message)
+                }
+            }
             process = newProcess
+            runLock = acquiredLock
             processState = .running(pid: newProcess.processIdentifier)
             startReading(
                 outputReader,
@@ -335,7 +352,11 @@ final class TunnelProcessController: ObservableObject {
             try? standardError.fileHandleForWriting.close()
             processState = .failed(exitCode: -1)
             managedTunnelName = nil
+            runLock = nil
             resetEdgeObservation(to: .unknown)
+            if let existing = error as? CloudflaredError {
+                throw existing
+            }
             throw CloudflaredError.processCouldNotStart(error.localizedDescription)
         }
     }
@@ -430,6 +451,7 @@ final class TunnelProcessController: ObservableObject {
         killWorkItem = nil
         terminatedProcess.terminationHandler = nil
         process = nil
+        runLock = nil
         managedTunnelName = nil
         resetEdgeObservation(to: .unknown)
         if terminationStatus == 0 || wasExpectedTermination {

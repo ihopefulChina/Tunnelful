@@ -25,6 +25,7 @@ sparkle-ed-private.key
 /app/.build/
 /DerivedData/
 /app/DerivedData/
+/.derivedData/
 *.xcuserstate
 **/xcuserdata/
 *.xccheckout

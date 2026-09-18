@@ -182,6 +182,29 @@ final class ProcessControllerTests: XCTestCase {
         XCTAssertNil(controller.managedTunnelName)
     }
 
+    func testSecondControllerCannotStartTheSameNamedTunnel() throws {
+        let first = TunnelProcessController()
+        try first.start(
+            executableURL: URL(fileURLWithPath: "/bin/sleep"),
+            arguments: ["30"],
+            tunnelName: "shared-lock"
+        )
+        defer {
+            let stopped = expectation(description: "first cleanup")
+            first.shutdown { stopped.fulfill() }
+            wait(for: [stopped], timeout: 6)
+        }
+
+        let second = TunnelProcessController()
+        XCTAssertThrowsError(try second.start(
+            executableURL: URL(fileURLWithPath: "/bin/sleep"),
+            arguments: ["30"],
+            tunnelName: "shared-lock"
+        )) { error in
+            XCTAssertEqual(error as? CloudflaredError, .processAlreadyRunning)
+        }
+    }
+
     func testLogsAreBufferedByLineAndRedactedBeforeProcessExit() throws {
         let scriptURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tunnelful-split-log-\(UUID().uuidString)")

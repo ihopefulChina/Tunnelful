@@ -45,6 +45,26 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     }
 }
 
+struct PublishDraft: Equatable, Sendable {
+    var tunnelName = ""
+    var hostname = ""
+    var service = ""
+    var path = ""
+
+    var isBlank: Bool {
+        tunnelName.isEmpty && hostname.isEmpty && service.isEmpty && path.isEmpty
+    }
+}
+
+private struct EnvironmentReportSignature: Equatable {
+    var installation: CloudflaredInstallation?
+    var configDocument: CloudflaredConfigDocument?
+    var tunnelState: TunnelDiscoveryState
+    var launchAtLoginState: LaunchAtLoginState
+    var startTunnelOnLaunch: Bool
+    var loginState: CloudflaredLoginController.State
+}
+
 protocol ConfigurationValidating: Sendable {
     func validate(installation: CloudflaredInstallation, configURL: URL) async throws -> String
 }
@@ -64,6 +84,7 @@ final class AppModel: ObservableObject {
         didSet {
             guard configurationDraft != oldValue else { return }
             lastValidationMessage = nil
+            lastValidationSucceeded = false
         }
     }
     @Published private(set) var tunnels: [CloudflaredTunnel] = []
@@ -73,6 +94,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var isApplyingConfiguration = false
     @Published private(set) var originCheck: OriginCheckSnapshot?
     @Published private(set) var lastValidationMessage: String?
+    @Published private(set) var lastValidationSucceeded = false
+    @Published var publishDraft = PublishDraft()
     @Published private(set) var lastBackupURL: URL?
     @Published private(set) var pendingDNSPlan: DNSRoutePlan?
     @Published var activationPrompt: ConfigurationActivationPrompt?
@@ -82,6 +105,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var startupAutomationMessage: String?
     @Published var alertMessage: String?
     @Published var requestedSection: AppSection?
+    @Published private(set) var alertPresenterID: UUID?
+    @Published private(set) var activationPresenterID: UUID?
     @Published var appearance: AppAppearance {
         didSet {
             userDefaults.set(appearance.rawValue, forKey: Self.appearanceKey)
@@ -116,6 +141,9 @@ final class AppModel: ObservableObject {
     private var hasEvaluatedStartupAutomation = false
     private var tunnelRefreshGeneration = 0
     private var originCheckGeneration = 0
+    private var bootstrapGeneration = 0
+    private var pendingBootstrap = false
+    private var cachedEnvironmentReport: (signature: EnvironmentReportSignature, report: EnvironmentReport)?
     private var isTerminating = false
     private var activeConfigurationPreviewURL: URL?
     private var activeConfigurationValidationTask: Task<String, Error>?
@@ -199,6 +227,15 @@ final class AppModel: ObservableObject {
     }
 
     func canStartTunnel(named tunnelName: String) -> Bool {
+        tunnelIsEligibleToStart(named: tunnelName)
+            && !isRoutingDNS
+            && !isApplyingConfiguration
+    }
+
+    /// Whether the named tunnel can start after the current save/DNS work finishes.
+    /// Unlike `canStartTunnel`, this ignores transient apply/route flags so planners
+    /// called mid-save can still queue a start follow-up.
+    func tunnelIsEligibleToStart(named tunnelName: String) -> Bool {
         let name = tunnelName.trimmingCharacters(in: .whitespacesAndNewlines)
         return installation != nil
             && selectedConfigURL != nil
@@ -206,6 +243,16 @@ final class AppModel: ObservableObject {
             && !name.hasPrefix("-")
             && !isKnownDeletedTunnel(name)
             && configurationSupportsTunnelSelection(name)
+            && !isManagedConnectorActive
+    }
+
+    var isManagedConnectorActive: Bool {
+        switch processController.processState {
+        case .running, .starting:
+            return true
+        default:
+            return false
+        }
     }
 
     func configurationSupportsTunnelSelection(_ selection: String) -> Bool {
@@ -290,7 +337,18 @@ final class AppModel: ObservableObject {
     }
 
     var environmentReport: EnvironmentReport {
-        environmentInspector.inspect(
+        let signature = EnvironmentReportSignature(
+            installation: installation,
+            configDocument: configDocument,
+            tunnelState: tunnelDiscoveryState,
+            launchAtLoginState: launchAtLoginState,
+            startTunnelOnLaunch: startTunnelOnLaunch,
+            loginState: loginController.state
+        )
+        if let cachedEnvironmentReport, cachedEnvironmentReport.signature == signature {
+            return cachedEnvironmentReport.report
+        }
+        let report = environmentInspector.inspect(
             installation: installation,
             configDocument: configDocument,
             tunnelState: tunnelDiscoveryState,
@@ -298,12 +356,29 @@ final class AppModel: ObservableObject {
             startTunnelOnLaunch: startTunnelOnLaunch,
             processEnvironment: ProcessInfo.processInfo.environment
         )
+        cachedEnvironmentReport = (signature, report)
+        return report
     }
 
     func bootstrap(reportErrors: Bool = false) async {
-        guard !isRefreshing else { return }
-        isRefreshing = true
-        defer { isRefreshing = false }
+        if isRefreshing {
+            pendingBootstrap = true
+            return
+        }
+        repeat {
+            pendingBootstrap = false
+            bootstrapGeneration &+= 1
+            let generation = bootstrapGeneration
+            isRefreshing = true
+            defer { isRefreshing = false }
+            await performBootstrap(reportErrors: reportErrors)
+            if generation != bootstrapGeneration {
+                continue
+            }
+        } while pendingBootstrap
+    }
+
+    private func performBootstrap(reportErrors: Bool) async {
         refreshLaunchAtLoginState()
 
         do {
@@ -399,6 +474,8 @@ final class AppModel: ObservableObject {
                 discoveredConfigURLs.append(url)
             }
             lastValidationMessage = nil
+            lastValidationSucceeded = false
+            resetPublishDraftFromConfiguration()
             invalidatePendingDNSRoute()
             originCheckGeneration &+= 1
             originCheck = nil
@@ -599,13 +676,47 @@ final class AppModel: ObservableObject {
         clearActivationFollowUp()
     }
 
-    private var isManagedConnectorActive: Bool {
-        switch processController.processState {
-        case .running, .starting:
+    func claimAlertPresenter(_ id: UUID) -> Bool {
+        if alertPresenterID == nil || alertPresenterID == id {
+            alertPresenterID = id
             return true
-        default:
-            return false
         }
+        return false
+    }
+
+    func releaseAlertPresenter(_ id: UUID) {
+        if alertPresenterID == id {
+            alertPresenterID = nil
+        }
+    }
+
+    func claimActivationPresenter(_ id: UUID) -> Bool {
+        if activationPresenterID == nil || activationPresenterID == id {
+            activationPresenterID = id
+            return true
+        }
+        return false
+    }
+
+    func releaseActivationPresenter(_ id: UUID) {
+        if activationPresenterID == id {
+            activationPresenterID = nil
+        }
+    }
+
+    func ensurePublishDraft() {
+        guard publishDraft.isBlank else { return }
+        resetPublishDraftFromConfiguration()
+    }
+
+    func resetPublishDraftFromConfiguration() {
+        let rule = configDocument?.primaryIngressRule
+        publishDraft = PublishDraft(
+            tunnelName: preferredTunnelName ?? "",
+            hostname: rule?.hostname?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+            service: rule?.service.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+            path: rule?.path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        )
     }
 
     private func clearActivationFollowUp() {
@@ -658,6 +769,7 @@ final class AppModel: ObservableObject {
             queuedDNSPlans = [plan]
         }
         pendingDNSPlan = plan
+        activationPromptGeneration &+= 1
         activationPrompt = .confirmDNS(plan)
     }
 
@@ -760,9 +872,6 @@ final class AppModel: ObservableObject {
         guard !isTerminating else { return }
         guard !isApplyingConfiguration else { return }
         guard !isRoutingDNS else { return }
-        pendingDNSPlan = nil
-        lastDNSRouteMessage = nil
-        clearActivationFollowUp()
         guard !hasUnsavedConfigurationDraft else {
             alertMessage = "Ingress 配置还有未保存的更改。请先处理这些更改，再发布服务。"
             return
@@ -831,10 +940,12 @@ final class AppModel: ObservableObject {
             guard canContinueConfigurationOperation(for: previewURL) else { return }
             let saveResult = try store.save(document, to: destinationURL)
             document.sourceURL = destinationURL
+            document.markPersistedOnDisk()
             configDocument = document
             configurationDraft = document
             lastBackupURL = saveResult.backupURL
             lastValidationMessage = validation.isEmpty ? "官方校验通过。" : validation
+            lastValidationSucceeded = true
             beginActivationFollowUp(
                 ConfigurationActivationPlanner.plan(
                     previous: previousDocument,
@@ -842,7 +953,7 @@ final class AppModel: ObservableObject {
                     dnsHostnames: [cleanHostname],
                     tunnelName: cleanTunnelName,
                     connectorIsActive: isManagedConnectorActive,
-                    canStartConnector: canStartTunnel(named: cleanTunnelName)
+                    canStartConnector: tunnelIsEligibleToStart(named: cleanTunnelName)
                 )
             )
         } catch is CancellationError {
@@ -960,10 +1071,13 @@ final class AppModel: ObservableObject {
             )
             guard canContinueConfigurationOperation(for: previewURL) else { return }
             let result = try store.save(document, to: destinationURL)
-            configDocument = document
-            configurationDraft = document
+            var persisted = document
+            persisted.markPersistedOnDisk()
+            configDocument = persisted
+            configurationDraft = persisted
             lastBackupURL = result.backupURL
             lastValidationMessage = output.isEmpty ? "官方校验通过。" : output
+            lastValidationSucceeded = true
             let addedHostnames = ConfigurationActivationPlanner.addedHostnames(
                 from: previousDocument,
                 to: document
@@ -984,7 +1098,7 @@ final class AppModel: ObservableObject {
                     dnsHostnames: addedHostnames,
                     tunnelName: tunnelName,
                     connectorIsActive: isManagedConnectorActive,
-                    canStartConnector: tunnelName.map { canStartTunnel(named: $0) } ?? false
+                    canStartConnector: tunnelName.map { tunnelIsEligibleToStart(named: $0) } ?? false
                 )
             )
         } catch is CancellationError {
@@ -1034,6 +1148,7 @@ final class AppModel: ObservableObject {
         do {
             let bytes = Data(CloudflaredConfigSerializer().serialize(document).utf8)
             try handle.write(contentsOf: bytes)
+            try handle.synchronize()
             try handle.close()
         } catch {
             try? handle.close()
@@ -1062,6 +1177,7 @@ final class AppModel: ObservableObject {
         do {
             let output = try await CloudflaredClient(installation: installation).validate(configURL: url)
             lastValidationMessage = output.isEmpty ? "官方校验通过。" : output
+            lastValidationSucceeded = true
         } catch {
             alertMessage = error.localizedDescription
         }
@@ -1075,6 +1191,7 @@ final class AppModel: ObservableObject {
         do {
             lastValidationMessage = try await CloudflaredClient(installation: installation)
                 .matchingRule(configURL: configURL, url: url)
+            lastValidationSucceeded = false
         } catch {
             alertMessage = error.localizedDescription
         }
@@ -1082,6 +1199,18 @@ final class AppModel: ObservableObject {
 
     func startTunnel(named tunnelName: String) {
         guard !isTerminating else { return }
+        guard !isRoutingDNS else {
+            alertMessage = "正在配置 DNS 路由，请完成后再启动 Tunnel。"
+            return
+        }
+        guard !isApplyingConfiguration else {
+            alertMessage = "正在保存配置，请完成后再启动 Tunnel。"
+            return
+        }
+        guard !isManagedConnectorActive else {
+            alertMessage = CloudflaredError.processAlreadyRunning.localizedDescription
+            return
+        }
         guard let installation else {
             alertMessage = CloudflaredError.executableNotFound.localizedDescription
             return
@@ -1135,6 +1264,14 @@ final class AppModel: ObservableObject {
 
     func restartTunnel(named tunnelName: String) {
         guard !isTerminating else { return }
+        guard !isRoutingDNS else {
+            alertMessage = "正在配置 DNS 路由，请完成后再重新启动 Tunnel。"
+            return
+        }
+        guard !isApplyingConfiguration else {
+            alertMessage = "正在保存配置，请完成后再重新启动 Tunnel。"
+            return
+        }
         guard let installation else {
             alertMessage = CloudflaredError.executableNotFound.localizedDescription
             return
@@ -1198,10 +1335,7 @@ final class AppModel: ObservableObject {
     }
 
     private func isKnownDeletedTunnel(_ name: String) -> Bool {
-        tunnels.contains {
-            !$0.isAvailable &&
-                ($0.id == name || $0.name.caseInsensitiveCompare(name) == .orderedSame)
-        }
+        tunnels.contains { !$0.isAvailable && $0.matchesSelection(name) }
     }
 
     func openMainWindow(section: AppSection? = nil, openWindow: OpenWindowAction) {

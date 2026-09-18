@@ -63,10 +63,7 @@ struct CloudflaredClient: Sendable {
         configURL: URL?,
         transportProtocol: TunnelTransportProtocol = .auto
     ) -> [String] {
-        var arguments = ["tunnel"]
-        if transportProtocol != .auto {
-            arguments += ["--protocol", transportProtocol.rawValue]
-        }
+        var arguments = ["tunnel", "--protocol", transportProtocol.rawValue]
         if let configURL {
             arguments += ["--config", configURL.path]
         }

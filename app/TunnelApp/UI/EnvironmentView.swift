@@ -14,8 +14,6 @@ private struct EnvironmentContent: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject var loginController: CloudflaredLoginController
     @State private var showLoginConfirmation = false
-    @State private var copiedInstallCommand = false
-    @State private var copyFeedbackGeneration = 0
 
     private var report: EnvironmentReport { model.environmentReport }
 
@@ -62,12 +60,6 @@ private struct EnvironmentContent: View {
         } message: {
             Text("将直接运行 cloudflared tunnel login。登录在 Cloudflare 官方网页完成，成功后会在本机保存 cert.pem；若发现无效 cert.pem，会先备份后再登录。")
         }
-        .task(id: copyFeedbackGeneration) {
-            guard copiedInstallCommand else { return }
-            try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled else { return }
-            copiedInstallCommand = false
-        }
     }
 
     private var summary: some View {
@@ -101,14 +93,13 @@ private struct EnvironmentContent: View {
                         : "已检测到 \(model.installation?.version ?? "可用版本")。"
                 ) {
                     if model.installation == nil {
-                        Button(copiedInstallCommand ? "已复制" : "复制安装命令") {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString("brew install cloudflared", forType: .string)
-                            copiedInstallCommand = true
-                            copyFeedbackGeneration &+= 1
+                        CopyConfirmationButton(
+                            title: "复制安装命令",
+                            help: "复制 brew install cloudflared",
+                            confirmedHelp: "已复制到剪贴板"
+                        ) {
+                            ClipboardCopy.string("brew install cloudflared")
                         }
-                        .help("复制 brew install cloudflared")
-                        .accessibilityValue(copiedInstallCommand ? "已复制到剪贴板" : "")
                         Button("官方下载") {
                             NSWorkspace.shared.open(AppActions.cloudflaredInstallURL)
                         }
@@ -259,12 +250,15 @@ private struct SetupRow<Actions: View>: View {
 
 private struct EnvironmentCheckRow: View {
     let item: EnvironmentCheckItem
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol)
                 .font(.body.weight(.medium))
                 .foregroundStyle(tint)
+                .contentTransition(AppMotion.symbolTransition(reduceMotion))
+                .animation(AppMotion.feedback(reduceMotion), value: item.state)
                 .frame(width: AppMetrics.accessoryColumnWidth)
                 .accessibilityHidden(true)
 

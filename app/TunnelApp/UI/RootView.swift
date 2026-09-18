@@ -113,7 +113,11 @@ struct RootView: View {
 
     private func consumeRequestedSection(_ section: AppSection?) {
         guard let section else { return }
-        selection = section
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            selection = section
+        }
         model.requestedSection = nil
     }
 }

@@ -51,8 +51,12 @@ base_build="$(sed -nE 's/^[[:space:]]*CURRENT_PROJECT_VERSION[[:space:]]*=[[:spa
 configured_bundle_identifier="$(sed -nE 's/^[[:space:]]*PRODUCT_BUNDLE_IDENTIFIER[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"
 expected_bundle_identifier='app.ihopeful.Tunnelful'
 legacy_identity_build_cutoff='26'
-sparkle_feed_url='https://ihopefulchina.github.io/Tunnelful/appcast.xml'
-sparkle_public_key='0hyxOLR9zBFNvSdozSz0hALE/wHrk72Vsad4KxqpyM0='
+sparkle_feed_url="$(sed -nE 's/^[[:space:]]*INFOPLIST_KEY_SUFeedURL[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"
+sparkle_public_key="$(sed -nE 's/^[[:space:]]*INFOPLIST_KEY_SUPublicEDKey[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"
+if [[ -z "$sparkle_feed_url" || -z "$sparkle_public_key" ]]; then
+  echo '未能从 Product.xcconfig 读取 Sparkle 源地址或公钥。' >&2
+  exit 1
+fi
 minimum_build_sdk='26.0'
 minimum_build_sdk_major="${minimum_build_sdk%%.*}"
 if [[ "$configured_bundle_identifier" != "$expected_bundle_identifier" ]]; then

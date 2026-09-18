@@ -293,6 +293,9 @@ struct TunnelAppMain: App {
 
     init() {
         ProcessLifetimeSupervisor.takeOverIfRequested()
+        if !AppInstanceCoordination.claimPrimaryInstanceOrActivateExisting() {
+            exit(0)
+        }
         let environment = ProcessInfo.processInfo.environment
         let isReleaseSmokeTest = AppDomainMigration.isReleaseSmokeTest(environment: environment)
         let userDefaults = AppDomainMigration.applicationUserDefaults(environment: environment)

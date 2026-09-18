@@ -60,8 +60,12 @@ if [[ ! "$legacy_identity_build_cutoff" =~ ^[0-9]+$ ]] || (( x86_64_build < lega
   echo "新 Bundle ID 的最低内部版本必须大于等于旧身份迁移门槛 $legacy_identity_build_cutoff。" >&2
   exit 1
 fi
-sparkle_feed_url='https://ihopefulchina.github.io/Tunnelful/appcast.xml'
-sparkle_public_key='0hyxOLR9zBFNvSdozSz0hALE/wHrk72Vsad4KxqpyM0='
+sparkle_feed_url="$(sed -nE 's/^[[:space:]]*INFOPLIST_KEY_SUFeedURL[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"
+sparkle_public_key="$(sed -nE 's/^[[:space:]]*INFOPLIST_KEY_SUPublicEDKey[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' "$product_config" | head -n 1)"
+if [[ -z "$sparkle_feed_url" || -z "$sparkle_public_key" ]]; then
+  echo '未能从 Product.xcconfig 读取 Sparkle 源地址或公钥。' >&2
+  exit 1
+fi
 release_notes_path="$project_root/.github/release-notes/$version.md"
 if [[ ! -f "$release_notes_path" ]]; then
   echo "缺少发布说明：$release_notes_path" >&2

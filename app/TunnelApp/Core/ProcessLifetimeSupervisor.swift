@@ -5,11 +5,26 @@ struct SupervisedProcessLaunch: Equatable, Sendable {
     var parentPID: pid_t
     var executablePath: String
     var arguments: [String]
+    var statusFilePath: String?
+}
+
+struct SupervisedProcessInvocation: Equatable, Sendable {
+    var executableURL: URL
+    var arguments: [String]
+    var environment: [String: String]
+    var statusURL: URL?
+}
+
+enum WatchdogChildStatus: Equatable, Sendable {
+    case started
+    case failed(String)
 }
 
 enum ProcessLifetimeSupervisor {
     static let marker = "--tunnelful-supervise-child"
+    static let childCouldNotStartExitCode: Int32 = 75
     private static let parentFlag = "--parent-pid"
+    private static let statusFileFlag = "--status-file"
     private static let terminationGracePeriod: TimeInterval = 5
 
     static var canSuperviseCurrentApp: Bool {
@@ -32,17 +47,30 @@ enum ProcessLifetimeSupervisor {
         executableURL: URL,
         arguments: [String],
         environment: [String: String]
-    ) -> (executableURL: URL, arguments: [String], environment: [String: String]) {
+    ) -> SupervisedProcessInvocation {
         guard canSuperviseCurrentApp, let supervisor = Bundle.main.executableURL else {
-            return (executableURL, arguments, environment)
+            return SupervisedProcessInvocation(
+                executableURL: executableURL,
+                arguments: arguments,
+                environment: environment,
+                statusURL: nil
+            )
         }
+        let statusURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tunnelful-watchdog-\(UUID().uuidString).status")
         let wrapped = [
             marker,
             parentFlag, String(getpid()),
+            statusFileFlag, statusURL.path,
             "--",
             executableURL.path
         ] + arguments
-        return (supervisor, wrapped, environment)
+        return SupervisedProcessInvocation(
+            executableURL: supervisor,
+            arguments: wrapped,
+            environment: environment,
+            statusURL: statusURL
+        )
     }
 
     static func parseArguments(
@@ -50,6 +78,7 @@ enum ProcessLifetimeSupervisor {
         fallbackParentPID: pid_t
     ) -> SupervisedProcessLaunch? {
         var parentPID = fallbackParentPID
+        var statusFilePath: String?
         var index = arguments.startIndex
         while index < arguments.endIndex {
             let item = arguments[index]
@@ -59,6 +88,15 @@ enum ProcessLifetimeSupervisor {
                     return nil
                 }
                 parentPID = parsed
+                index = arguments.index(after: valueIndex)
+                continue
+            }
+            if item == statusFileFlag {
+                let valueIndex = arguments.index(after: index)
+                guard valueIndex < arguments.endIndex, !arguments[valueIndex].isEmpty else {
+                    return nil
+                }
+                statusFilePath = arguments[valueIndex]
                 index = arguments.index(after: valueIndex)
                 continue
             }
@@ -75,7 +113,8 @@ enum ProcessLifetimeSupervisor {
         return SupervisedProcessLaunch(
             parentPID: parentPID,
             executablePath: executablePath,
-            arguments: childArguments
+            arguments: childArguments,
+            statusFilePath: statusFilePath
         )
     }
 
@@ -93,6 +132,27 @@ enum ProcessLifetimeSupervisor {
         _ = kill(pid, SIGKILL)
     }
 
+    static func waitForChildStatus(
+        at url: URL,
+        timeout: TimeInterval = 2
+    ) -> WatchdogChildStatus {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let text = try? String(contentsOf: url, encoding: .utf8) {
+                let line = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if line == "ok" {
+                    return .started
+                }
+                if line.hasPrefix("fail") {
+                    let message = line.dropFirst(4).trimmingCharacters(in: CharacterSet(charactersIn: ": "))
+                    return .failed(message.isEmpty ? "看门狗无法启动子进程。" : String(message))
+                }
+            }
+            usleep(10_000)
+        }
+        return .started
+    }
+
     private static func supervise(_ launch: SupervisedProcessLaunch) -> Int32 {
         detachFromParentProcessGroup()
 
@@ -106,11 +166,14 @@ enum ProcessLifetimeSupervisor {
 
         do {
             try child.run()
+            writeStatus("ok", to: launch.statusFilePath)
         } catch {
+            let message = error.localizedDescription
+            writeStatus("fail:\(message)", to: launch.statusFilePath)
             FileHandle.standardError.write(
-                Data("Tunnelful 看门狗无法启动子进程：\(error.localizedDescription)\n".utf8)
+                Data("Tunnelful 看门狗无法启动子进程：\(message)\n".utf8)
             )
-            return 1
+            return childCouldNotStartExitCode
         }
 
         let childPID = child.processIdentifier
@@ -163,6 +226,11 @@ enum ProcessLifetimeSupervisor {
         termSource.cancel()
         intSource.cancel()
         return child.terminationStatus
+    }
+
+    private static func writeStatus(_ text: String, to path: String?) {
+        guard let path else { return }
+        try? Data("\(text)\n".utf8).write(to: URL(fileURLWithPath: path), options: .atomic)
     }
 
     private static func detachFromParentProcessGroup() {

@@ -229,7 +229,7 @@ final class CommandAndParserTests: XCTestCase {
         XCTAssertEqual(restoredAfterQUIC.transportProtocol, .quic)
     }
 
-    func testRunArgumentsOmitProtocolWhenAutoAndInsertFlagOtherwise() {
+    func testRunArgumentsAlwaysIncludeProtocolFlag() {
         let installation = CloudflaredInstallation(
             executableURL: URL(fileURLWithPath: "/usr/local/bin/cloudflared"),
             version: "2026.1.0",
@@ -240,7 +240,7 @@ final class CommandAndParserTests: XCTestCase {
 
         XCTAssertEqual(
             client.runArguments(tunnel: "dev", configURL: config, transportProtocol: .auto),
-            ["tunnel", "--config", config.path, "run", "dev"]
+            ["tunnel", "--protocol", "auto", "--config", config.path, "run", "dev"]
         )
         XCTAssertEqual(
             client.runArguments(tunnel: "dev", configURL: config, transportProtocol: .http2),
@@ -725,6 +725,34 @@ final class CommandAndParserTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testLoginInvalidExecutableFailsWithoutReportingWatchdogExit() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tunnelful-login-invalid-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let executable = root.appendingPathComponent("cloudflared")
+        try Data("not a valid executable".utf8).write(to: executable, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o700)],
+            ofItemAtPath: executable.path
+        )
+
+        let controller = CloudflaredLoginController(
+            inspector: EnvironmentInspector(homeDirectory: root)
+        )
+        controller.start(executableURL: executable) {}
+        try await Task.sleep(for: .milliseconds(150))
+
+        guard case let .failed(message) = controller.state else {
+            return XCTFail("Expected login launch failure, got \(controller.state)")
+        }
+        XCTAssertTrue(message.contains("无法启动官方登录"))
+        XCTAssertFalse(message.contains("退出状态"))
+        XCTAssertFalse(controller.isRunning)
+    }
+
     func testTunnelListParserAcceptsCurrentJSONShape() throws {
         let json = """
         [
@@ -1021,13 +1049,37 @@ final class CommandAndParserTests: XCTestCase {
         XCTAssertNil(ProcessLifetimeSupervisor.parseArguments(["--parent-pid"], fallbackParentPID: 1))
         XCTAssertNil(ProcessLifetimeSupervisor.parseArguments(["--"], fallbackParentPID: 1))
 
-        let unwrapped = ProcessLifetimeSupervisor.wrapIfNeeded(
+        let parsedWithStatus = ProcessLifetimeSupervisor.parseArguments(
+            [
+                "--parent-pid", "9",
+                "--status-file", "/tmp/watchdog.status",
+                "--",
+                "/usr/local/bin/cloudflared",
+                "tunnel", "run", "dev"
+            ],
+            fallbackParentPID: 1
+        )
+        XCTAssertEqual(parsedWithStatus?.parentPID, 9)
+        XCTAssertEqual(parsedWithStatus?.statusFilePath, "/tmp/watchdog.status")
+        XCTAssertEqual(parsedWithStatus?.executablePath, "/usr/local/bin/cloudflared")
+
+        let wrapped = ProcessLifetimeSupervisor.wrapIfNeeded(
             executableURL: URL(fileURLWithPath: "/usr/local/bin/cloudflared"),
             arguments: ["tunnel", "run", "dev"],
             environment: ["HOME": "/tmp/example-home"]
         )
-        XCTAssertEqual(unwrapped.executableURL.path, "/usr/local/bin/cloudflared")
-        XCTAssertEqual(unwrapped.arguments, ["tunnel", "run", "dev"])
+        if ProcessLifetimeSupervisor.canSuperviseCurrentApp {
+            XCTAssertEqual(wrapped.executableURL, Bundle.main.executableURL)
+            XCTAssertTrue(wrapped.arguments.contains(ProcessLifetimeSupervisor.marker))
+            XCTAssertNotNil(wrapped.statusURL)
+            if let statusURL = wrapped.statusURL {
+                try? FileManager.default.removeItem(at: statusURL)
+            }
+        } else {
+            XCTAssertEqual(wrapped.executableURL.path, "/usr/local/bin/cloudflared")
+            XCTAssertEqual(wrapped.arguments, ["tunnel", "run", "dev"])
+            XCTAssertNil(wrapped.statusURL)
+        }
     }
 
     func testProcessLineAccumulatorSplitsCompleteLines() {

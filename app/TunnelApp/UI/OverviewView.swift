@@ -36,16 +36,21 @@ struct OverviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppMetrics.sectionSpacing) {
                 statusBoard
+                    .animation(AppMotion.content(reduceMotion), value: process.processState)
 
                 if let diagnostic = process.edgeDiagnostic {
                     diagnosticBanner(diagnostic)
+                        .animation(AppMotion.content(reduceMotion), value: diagnostic)
                 }
 
                 managedTunnelSection
+                    .animation(AppMotion.content(reduceMotion), value: process.processState)
+
                 environmentSection
 
                 if let message = visibleStartupAutomationMessage {
                     NoticeView(kind: .info, title: "自动启动", message: message)
+                        .animation(AppMotion.content(reduceMotion), value: message)
                 }
 
                 if model.configDocument == nil {
@@ -54,12 +59,13 @@ struct OverviewView: View {
                         title: "尚未导入配置",
                         message: "导入 config.yml 后即可编辑 Ingress 规则并运行命名 Tunnel。"
                     )
-                } else if let message = model.lastValidationMessage {
+                } else if model.lastValidationSucceeded, let message = model.lastValidationMessage {
                     NoticeView(
                         kind: .success,
                         title: "配置校验通过",
                         message: message
                     )
+                    .animation(AppMotion.content(reduceMotion), value: message)
                 }
             }
             .padding(.horizontal, AppMetrics.pagePadding)
@@ -81,9 +87,6 @@ struct OverviewView: View {
                 }
             }
         }
-        .animation(AppMotion.content(reduceMotion), value: process.processState)
-        .animation(AppMotion.content(reduceMotion), value: process.edgeState)
-        .animation(AppMotion.content(reduceMotion), value: currentOriginState)
     }
 
     private var statusBoard: some View {

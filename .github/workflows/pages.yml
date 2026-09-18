@@ -99,6 +99,7 @@ jobs:
       - name: 选择 Sparkle 更新源
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           RELEASE_READY: ${{ needs.release-state.outputs.ready }}
           VERSION: ${{ needs.release-state.outputs.version }}
         run: |
@@ -110,9 +111,15 @@ jobs:
               --dir /tmp/tunnelful-appcast
             cp /tmp/tunnelful-appcast/appcast.xml website/public/appcast.xml
             echo '已使用对应 GitHub Release 中的 Sparkle 更新源。'
+          elif curl -fsSL 'https://ihopefulchina.github.io/Tunnelful/appcast.xml' \
+            -o /tmp/tunnelful-appcast/appcast.xml; then
+            cp /tmp/tunnelful-appcast/appcast.xml website/public/appcast.xml
+            echo 'Release 尚未就绪，已沿用线上 Sparkle 更新源，避免回退到更旧的仓库副本。'
+          elif [[ "$GITHUB_EVENT_NAME" == 'workflow_run' ]]; then
+            echo '无法获取线上更新源，且对应 Release 尚未就绪。' >&2
+            exit 1
           else
-            cp appcast.xml website/public/appcast.xml
-            echo 'Release 尚未就绪，已使用仓库内 Sparkle 更新源。'
+            echo '无法获取线上更新源，保留 website/public 中现有的更新源。'
           fi
       - name: 确认更新源包含当前版本
         if: needs.release-state.outputs.ready == 'true'

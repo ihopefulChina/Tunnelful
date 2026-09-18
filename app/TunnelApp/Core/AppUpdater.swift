@@ -74,6 +74,10 @@ private final class SparkleUpdateDelegate: NSObject, SPUUpdaterDelegate {
             )
         }
     }
+
+    func feedURLString(for updater: SPUUpdater) -> String? {
+        AppUpdater.feedURL.absoluteString
+    }
 }
 
 @MainActor
@@ -125,8 +129,8 @@ private final class SparkleUpdaterDriver: AppUpdaterDriving {
 
 @MainActor
 final class AppUpdater: ObservableObject {
-    static let feedURL = URL(string: "https://ihopefulchina.github.io/Tunnelful/appcast.xml")!
-    static let publicEDKey = "0hyxOLR9zBFNvSdozSz0hALE/wHrk72Vsad4KxqpyM0="
+    nonisolated static let feedURL = URL(string: "https://ihopefulchina.github.io/Tunnelful/appcast.xml")!
+    nonisolated static let publicEDKey = "0hyxOLR9zBFNvSdozSz0hALE/wHrk72Vsad4KxqpyM0="
 
     private var storedDriver: (any AppUpdaterDriving)?
 
@@ -136,8 +140,14 @@ final class AppUpdater: ObservableObject {
     ) {
         if releaseSmokeTest {
             storedDriver = ReleaseSmokeTestUpdaterDriver()
-        } else {
+        } else if let driver {
             storedDriver = driver
+        } else {
+            let created = SparkleUpdaterDriver()
+            storedDriver = created
+            created.onCanCheckChange = { [weak self] in
+                self?.objectWillChange.send()
+            }
         }
     }
 
@@ -162,12 +172,6 @@ final class AppUpdater: ObservableObject {
         if let storedDriver {
             return storedDriver
         }
-        let driver = SparkleUpdaterDriver()
-        driver.onCanCheckChange = { [weak self] in
-            self?.objectWillChange.send()
-        }
-        storedDriver = driver
-        objectWillChange.send()
-        return driver
+        preconditionFailure("AppUpdater is missing an updater driver.")
     }
 }
