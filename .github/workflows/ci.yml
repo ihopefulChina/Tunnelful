@@ -111,6 +111,7 @@ jobs:
           cp website/dist/client/404.html website/dist/client/Tunnelful/404.html
           test -f website/dist/client/Tunnelful/404.html
           test -f website/dist/client/Tunnelful/tunnelful-icon.png
+          test -f website/dist/client/Tunnelful/tunnelful-icon-dark.png
           test -f website/dist/client/Tunnelful/tunnelful-window-v0.1.10.png
           grep -Fq "Tunnelful-${version}-arm64.dmg" website/dist/client/Tunnelful/index.html
           grep -Fq "Tunnelful-${version}-x86_64.dmg" website/dist/client/Tunnelful/index.html

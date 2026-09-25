@@ -253,7 +253,7 @@ final class TunnelProcessController: ObservableObject {
         executableURL: URL,
         arguments: [String],
         tunnelName: String? = nil
-    ) throws {
+    ) async throws {
         guard !isShuttingDown else { throw CloudflaredError.commandCancelled }
         guard process == nil else { throw CloudflaredError.processAlreadyRunning }
         guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
@@ -316,7 +316,7 @@ final class TunnelProcessController: ObservableObject {
             try newProcess.run()
             if let statusURL = launch.statusURL {
                 defer { try? FileManager.default.removeItem(at: statusURL) }
-                if case let .failed(message) = ProcessLifetimeSupervisor.waitForChildStatus(at: statusURL) {
+                if case let .failed(message) = await ProcessLifetimeSupervisor.waitForChildStatus(at: statusURL) {
                     newProcess.terminationHandler = nil
                     if newProcess.isRunning {
                         ProcessLifetimeSupervisor.killSupervisedProcessTree(newProcess.processIdentifier)
@@ -372,10 +372,10 @@ final class TunnelProcessController: ObservableObject {
         executableURL: URL,
         arguments: [String],
         tunnelName: String? = nil
-    ) throws {
+    ) async throws {
         guard !isShuttingDown else { throw CloudflaredError.commandCancelled }
         guard let process else {
-            try start(executableURL: executableURL, arguments: arguments, tunnelName: tunnelName)
+            try await start(executableURL: executableURL, arguments: arguments, tunnelName: tunnelName)
             return
         }
         pendingRestart = LaunchRequest(
@@ -523,15 +523,17 @@ final class TunnelProcessController: ObservableObject {
     private func launchPendingRestartIfNeeded() {
         guard let request = pendingRestart else { return }
         pendingRestart = nil
-        do {
-            try start(
-                executableURL: request.executableURL,
-                arguments: request.arguments,
-                tunnelName: request.tunnelName
-            )
-        } catch {
-            processState = .failed(exitCode: -1)
-            appendAppLog(redactor.redact(error.localizedDescription))
+        Task { @MainActor in
+            do {
+                try await self.start(
+                    executableURL: request.executableURL,
+                    arguments: request.arguments,
+                    tunnelName: request.tunnelName
+                )
+            } catch {
+                self.processState = .failed(exitCode: -1)
+                self.appendAppLog(self.redactor.redact(error.localizedDescription))
+            }
         }
     }
 }

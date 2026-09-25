@@ -197,10 +197,18 @@ struct AppSurfaceModifier: ViewModifier {
 }
 
 struct AppPageBackground: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
     func body(content: Content) -> some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(AppPalette.workspace)
+            .background {
+                if reduceTransparency {
+                    AppPalette.workspace
+                } else {
+                    Color(nsColor: .controlBackgroundColor)
+                }
+            }
     }
 }
 
@@ -218,10 +226,11 @@ enum NativeWindowAppearance {
     }
 
     static func apply(to window: NSWindow) {
-        // Fill window corners with the sidebar color so the bottom-left
-        // radius does not leak the desktop. Do not paint the toolbar white.
-        window.backgroundColor = AppPalette.chromeNSColor
+        // Match a normal macOS window: system sidebar glass, solid content fill.
+        // A clear window lets the desktop show through the whole surface.
         window.isOpaque = true
+        window.backgroundColor = .windowBackgroundColor
+        window.titlebarAppearsTransparent = false
         window.titlebarSeparatorStyle = .line
     }
 }

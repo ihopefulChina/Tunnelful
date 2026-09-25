@@ -5,7 +5,7 @@ import XCTest
 
 @MainActor
 final class ProcessControllerTests: XCTestCase {
-    func testShutdownPermanentlyRejectsLaterStartsAndRestarts() throws {
+    func testShutdownPermanentlyRejectsLaterStartsAndRestarts() async throws {
         let controller = TunnelProcessController()
         var shutdownCompleted = false
 
@@ -14,27 +14,33 @@ final class ProcessControllerTests: XCTestCase {
         }
 
         XCTAssertTrue(shutdownCompleted)
-        XCTAssertThrowsError(try controller.start(
-            executableURL: URL(fileURLWithPath: "/usr/bin/true"),
-            arguments: [],
-            tunnelName: "late-start"
-        )) { error in
+        do {
+            try await controller.start(
+                executableURL: URL(fileURLWithPath: "/usr/bin/true"),
+                arguments: [],
+                tunnelName: "late-start"
+            )
+            XCTFail("Expected a cancelled start")
+        } catch {
             XCTAssertEqual(error as? CloudflaredError, .commandCancelled)
         }
-        XCTAssertThrowsError(try controller.restart(
-            executableURL: URL(fileURLWithPath: "/usr/bin/true"),
-            arguments: [],
-            tunnelName: "late-restart"
-        )) { error in
+        do {
+            try await controller.restart(
+                executableURL: URL(fileURLWithPath: "/usr/bin/true"),
+                arguments: [],
+                tunnelName: "late-restart"
+            )
+            XCTFail("Expected a cancelled restart")
+        } catch {
             XCTAssertEqual(error as? CloudflaredError, .commandCancelled)
         }
         XCTAssertEqual(controller.processState, .stopped)
         XCTAssertNil(controller.managedTunnelName)
     }
 
-    func testManagedTunnelIdentityFollowsStartAndRestart() throws {
+    func testManagedTunnelIdentityFollowsStartAndRestart() async throws {
         let controller = TunnelProcessController(terminationGracePeriod: 0.1)
-        try controller.start(
+        try await controller.start(
             executableURL: URL(fileURLWithPath: "/bin/sleep"),
             arguments: ["30"],
             tunnelName: "first"
@@ -43,28 +49,28 @@ final class ProcessControllerTests: XCTestCase {
 
         let restarted = expectation(description: "replacement process started")
         var observation: AnyCancellable?
-        observation = controller.$managedTunnelName.dropFirst().sink { name in
-            guard name == "second" else { return }
+        observation = controller.$processState.sink { state in
+            guard case .running = state, controller.managedTunnelName == "second" else { return }
             restarted.fulfill()
             observation?.cancel()
         }
-        try controller.restart(
+        try await controller.restart(
             executableURL: URL(fileURLWithPath: "/bin/sleep"),
             arguments: ["30"],
             tunnelName: "second"
         )
-        wait(for: [restarted], timeout: 2)
+        await fulfillment(of: [restarted], timeout: 2)
         XCTAssertEqual(controller.managedTunnelName, "second")
 
         let stopped = expectation(description: "cleanup")
         controller.shutdown { stopped.fulfill() }
-        wait(for: [stopped], timeout: 2)
+        await fulfillment(of: [stopped], timeout: 2)
         XCTAssertNil(controller.managedTunnelName)
     }
 
-    func testUnexpectedSignalIsReportedAsFailure() throws {
+    func testUnexpectedSignalIsReportedAsFailure() async throws {
         let controller = TunnelProcessController()
-        try controller.start(
+        try await controller.start(
             executableURL: URL(fileURLWithPath: "/bin/sh"),
             arguments: ["-c", "kill -SEGV $$"]
         )
@@ -76,14 +82,14 @@ final class ProcessControllerTests: XCTestCase {
             finished.fulfill()
             observation?.cancel()
         }
-        wait(for: [finished], timeout: 2)
+        await fulfillment(of: [finished], timeout: 2)
 
         guard case .failed = controller.processState else {
             return XCTFail("An unexpected signal must be reported as a failure")
         }
     }
 
-    func testStopForceKillsOwnedProcessThatIgnoresTermination() throws {
+    func testStopForceKillsOwnedProcessThatIgnoresTermination() async throws {
         let scriptURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tunnelful-ignore-term-\(UUID().uuidString)")
         let script = """
@@ -99,7 +105,7 @@ final class ProcessControllerTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: scriptURL) }
 
         let controller = TunnelProcessController(terminationGracePeriod: 0.1)
-        try controller.start(executableURL: scriptURL, arguments: [])
+        try await controller.start(executableURL: scriptURL, arguments: [])
         try controller.stop()
 
         let stopped = expectation(description: "SIGKILL fallback completed")
@@ -109,12 +115,12 @@ final class ProcessControllerTests: XCTestCase {
             stopped.fulfill()
             observation?.cancel()
         }
-        wait(for: [stopped], timeout: 2)
+        await fulfillment(of: [stopped], timeout: 2)
 
         XCTAssertEqual(controller.processState, .stopped)
     }
 
-    func testShutdownStopsOnlyTheOwnedProcess() throws {
+    func testShutdownStopsOnlyTheOwnedProcess() async throws {
         let external = Process()
         external.executableURL = URL(fileURLWithPath: "/bin/sleep")
         external.arguments = ["30"]
@@ -125,7 +131,7 @@ final class ProcessControllerTests: XCTestCase {
         }
 
         let controller = TunnelProcessController()
-        try controller.start(
+        try await controller.start(
             executableURL: URL(fileURLWithPath: "/bin/sleep"),
             arguments: ["30"]
         )
@@ -135,33 +141,34 @@ final class ProcessControllerTests: XCTestCase {
 
         let stopped = expectation(description: "Owned process stopped")
         controller.shutdown { stopped.fulfill() }
-        wait(for: [stopped], timeout: 6)
+        await fulfillment(of: [stopped], timeout: 6)
 
         XCTAssertEqual(controller.processState, .stopped)
         XCTAssertTrue(external.isRunning, "An unrelated process must never be terminated")
     }
 
-    func testSecondStartIsRejected() throws {
+    func testSecondStartIsRejected() async throws {
         let controller = TunnelProcessController()
-        try controller.start(
+        try await controller.start(
             executableURL: URL(fileURLWithPath: "/bin/sleep"),
             arguments: ["30"]
         )
-        defer {
-            let stopped = expectation(description: "cleanup")
-            controller.shutdown { stopped.fulfill() }
-            wait(for: [stopped], timeout: 6)
-        }
 
-        XCTAssertThrowsError(try controller.start(
-            executableURL: URL(fileURLWithPath: "/bin/sleep"),
-            arguments: ["30"]
-        )) { error in
+        do {
+            try await controller.start(
+                executableURL: URL(fileURLWithPath: "/bin/sleep"),
+                arguments: ["30"]
+            )
+            XCTFail("Expected a second start to be rejected")
+        } catch {
             XCTAssertEqual(error as? CloudflaredError, .processAlreadyRunning)
         }
+        let stopped = expectation(description: "cleanup")
+        controller.shutdown { stopped.fulfill() }
+        await fulfillment(of: [stopped], timeout: 6)
     }
 
-    func testExecutableThatCannotBeLaunchedFailsWithoutStartingReaders() throws {
+    func testExecutableThatCannotBeLaunchedFailsWithoutStartingReaders() async throws {
         let executableURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tunnelful-invalid-executable-\(UUID().uuidString)")
         try Data("not a valid executable".utf8).write(to: executableURL, options: .atomic)
@@ -172,7 +179,10 @@ final class ProcessControllerTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: executableURL) }
 
         let controller = TunnelProcessController()
-        XCTAssertThrowsError(try controller.start(executableURL: executableURL, arguments: [])) { error in
+        do {
+            try await controller.start(executableURL: executableURL, arguments: [])
+            XCTFail("Expected the launch failure to be reported")
+        } catch {
             guard case .processCouldNotStart = error as? CloudflaredError else {
                 return XCTFail("Expected the launch failure to be reported")
             }
@@ -182,30 +192,31 @@ final class ProcessControllerTests: XCTestCase {
         XCTAssertNil(controller.managedTunnelName)
     }
 
-    func testSecondControllerCannotStartTheSameNamedTunnel() throws {
+    func testSecondControllerCannotStartTheSameNamedTunnel() async throws {
         let first = TunnelProcessController()
-        try first.start(
+        try await first.start(
             executableURL: URL(fileURLWithPath: "/bin/sleep"),
             arguments: ["30"],
             tunnelName: "shared-lock"
         )
-        defer {
-            let stopped = expectation(description: "first cleanup")
-            first.shutdown { stopped.fulfill() }
-            wait(for: [stopped], timeout: 6)
-        }
 
         let second = TunnelProcessController()
-        XCTAssertThrowsError(try second.start(
-            executableURL: URL(fileURLWithPath: "/bin/sleep"),
-            arguments: ["30"],
-            tunnelName: "shared-lock"
-        )) { error in
+        do {
+            try await second.start(
+                executableURL: URL(fileURLWithPath: "/bin/sleep"),
+                arguments: ["30"],
+                tunnelName: "shared-lock"
+            )
+            XCTFail("Expected the shared tunnel lock to reject the second start")
+        } catch {
             XCTAssertEqual(error as? CloudflaredError, .processAlreadyRunning)
         }
+        let stopped = expectation(description: "first cleanup")
+        first.shutdown { stopped.fulfill() }
+        await fulfillment(of: [stopped], timeout: 6)
     }
 
-    func testLogsAreBufferedByLineAndRedactedBeforeProcessExit() throws {
+    func testLogsAreBufferedByLineAndRedactedBeforeProcessExit() async throws {
         let scriptURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tunnelful-split-log-\(UUID().uuidString)")
         let script = """
@@ -230,14 +241,7 @@ final class ProcessControllerTests: XCTestCase {
 
         let controller = TunnelProcessController()
         let startedAt = Date()
-        try controller.start(executableURL: scriptURL, arguments: [])
-        defer {
-            if case .running = controller.processState {
-                let stopped = expectation(description: "cleanup")
-                controller.shutdown { stopped.fulfill() }
-                wait(for: [stopped], timeout: 6)
-            }
-        }
+        try await controller.start(executableURL: scriptURL, arguments: [])
 
         let emittedCompleteLines = expectation(description: "complete lines emitted")
         var edgeObservation: AnyCancellable?
@@ -246,7 +250,7 @@ final class ProcessControllerTests: XCTestCase {
             emittedCompleteLines.fulfill()
             edgeObservation?.cancel()
         }
-        wait(for: [emittedCompleteLines], timeout: 1)
+        await fulfillment(of: [emittedCompleteLines], timeout: 1)
 
         guard case .running = controller.processState else {
             return XCTFail("Complete lines must be delivered before the process exits")
@@ -259,9 +263,14 @@ final class ProcessControllerTests: XCTestCase {
         let visibleLogs = controller.logs.map(\.message).joined(separator: "\n")
         XCTAssertFalse(visibleLogs.contains("sample-token"))
         XCTAssertTrue(visibleLogs.contains("Authorization: <已隐藏>"))
+        if case .running = controller.processState {
+            let stopped = expectation(description: "cleanup")
+            controller.shutdown { stopped.fulfill() }
+            await fulfillment(of: [stopped], timeout: 6)
+        }
     }
 
-    func testTrailingLogTextWithoutNewlineIsFlushedAtExit() throws {
+    func testTrailingLogTextWithoutNewlineIsFlushedAtExit() async throws {
         let scriptURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tunnelful-trailing-log-\(UUID().uuidString)")
         let script = """
@@ -277,7 +286,7 @@ final class ProcessControllerTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: scriptURL) }
 
         let controller = TunnelProcessController()
-        try controller.start(executableURL: scriptURL, arguments: [])
+        try await controller.start(executableURL: scriptURL, arguments: [])
 
         let finished = expectation(description: "trailing text flushed")
         var processObservation: AnyCancellable?
@@ -288,7 +297,7 @@ final class ProcessControllerTests: XCTestCase {
         }
         // This verifies drain ordering, not a 1.5-second process-launch SLA.
         // Foundation and GCD delivery can be delayed by concurrent release builds.
-        wait(for: [finished], timeout: 5)
+        await fulfillment(of: [finished], timeout: 5)
 
         XCTAssertTrue(controller.logs.contains {
             $0.stream == .standardOutput && $0.message == "stdout-without-newline"
@@ -298,9 +307,9 @@ final class ProcessControllerTests: XCTestCase {
         })
     }
 
-    func testStartLogMentionsForcedHTTP2Protocol() throws {
+    func testStartLogMentionsForcedHTTP2Protocol() async throws {
         let controller = TunnelProcessController()
-        try controller.start(
+        try await controller.start(
             executableURL: URL(fileURLWithPath: "/usr/bin/true"),
             arguments: ["--protocol", "http2"]
         )
@@ -309,6 +318,6 @@ final class ProcessControllerTests: XCTestCase {
         })
         let stopped = expectation(description: "cleanup")
         controller.shutdown { stopped.fulfill() }
-        wait(for: [stopped], timeout: 6)
+        await fulfillment(of: [stopped], timeout: 6)
     }
 }

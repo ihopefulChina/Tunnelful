@@ -28,6 +28,7 @@
 		010000000000000000000014 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000014 /* SettingsView.swift */; };
 		010000000000000000000015 /* MenuBarPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000015 /* MenuBarPanel.swift */; };
 		010000000000000000000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000016 /* Assets.xcassets */; };
+		010000000000000000000026 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 02000000000000000000002B /* AppIcon.icon */; };
 		010000000000000000000017 /* CommandAndParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000017 /* CommandAndParserTests.swift */; };
 		010000000000000000000018 /* ConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000018 /* ConfigurationTests.swift */; };
 		010000000000000000000019 /* ProcessControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000019 /* ProcessControllerTests.swift */; };
@@ -78,6 +79,7 @@
 		020000000000000000000014 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		020000000000000000000015 /* MenuBarPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPanel.swift; sourceTree = "<group>"; };
 		020000000000000000000016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		02000000000000000000002B /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		020000000000000000000017 /* CommandAndParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandAndParserTests.swift; sourceTree = "<group>"; };
 		020000000000000000000018 /* ConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationTests.swift; sourceTree = "<group>"; };
 		020000000000000000000019 /* ProcessControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessControllerTests.swift; sourceTree = "<group>"; };
@@ -124,6 +126,7 @@
 				050000000000000000000003 /* Core */,
 				050000000000000000000004 /* UI */,
 				020000000000000000000016 /* Assets.xcassets */,
+				02000000000000000000002B /* AppIcon.icon */,
 			);
 			path = TunnelApp;
 			sourceTree = "<group>";
@@ -271,7 +274,10 @@
 		060000000000000000000002 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (010000000000000000000016 /* Assets.xcassets in Resources */);
+			files = (
+				010000000000000000000016 /* Assets.xcassets in Resources */,
+				010000000000000000000026 /* AppIcon.icon in Resources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		060000000000000000000004 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };

@@ -39,7 +39,7 @@ final class CloudflaredLoginController: ObservableObject {
         self.terminationGracePeriod = terminationGracePeriod
     }
 
-    func start(executableURL: URL, completion: @escaping @MainActor @Sendable () -> Void) {
+    func start(executableURL: URL, completion: @escaping @MainActor @Sendable () -> Void) async {
         guard process == nil else { return }
         guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
             state = .failed("所选 cloudflared 不可执行。")
@@ -99,7 +99,7 @@ final class CloudflaredLoginController: ObservableObject {
             try process.run()
             if let statusURL = launch.statusURL {
                 defer { try? FileManager.default.removeItem(at: statusURL) }
-                if case let .failed(message) = ProcessLifetimeSupervisor.waitForChildStatus(at: statusURL) {
+                if case let .failed(message) = await ProcessLifetimeSupervisor.waitForChildStatus(at: statusURL) {
                     process.terminationHandler = nil
                     if process.isRunning {
                         ProcessLifetimeSupervisor.killSupervisedProcessTree(process.processIdentifier)

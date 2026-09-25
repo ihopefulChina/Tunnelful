@@ -549,7 +549,7 @@ final class CommandAndParserTests: XCTestCase {
         let controller = CloudflaredLoginController(
             inspector: EnvironmentInspector(homeDirectory: root)
         )
-        controller.start(executableURL: executable) {}
+        await controller.start(executableURL: executable) {}
 
         for _ in 0..<500 {
             guard controller.isRunning else { break }
@@ -587,7 +587,7 @@ final class CommandAndParserTests: XCTestCase {
             timeout: 5,
             terminationGracePeriod: 0.1
         )
-        controller.start(executableURL: executable) {}
+        await controller.start(executableURL: executable) {}
 
         for _ in 0..<500 {
             if controller.progressMessage != nil { break }
@@ -631,7 +631,7 @@ final class CommandAndParserTests: XCTestCase {
             inspector: EnvironmentInspector(homeDirectory: root)
         )
         let completion = LoginCompletionRecorder()
-        controller.start(executableURL: executable) {
+        await controller.start(executableURL: executable) {
             completion.callCount += 1
         }
 
@@ -652,7 +652,7 @@ final class CommandAndParserTests: XCTestCase {
     }
 
     @MainActor
-    func testLoginDoesNotMoveValidCertificate() throws {
+    func testLoginDoesNotMoveValidCertificate() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("tunnelful-login-valid-certificate-\(UUID().uuidString)", isDirectory: true)
         let cloudflaredDirectory = root.appendingPathComponent(".cloudflared", isDirectory: true)
@@ -666,7 +666,7 @@ final class CommandAndParserTests: XCTestCase {
         let controller = CloudflaredLoginController(
             inspector: EnvironmentInspector(homeDirectory: root)
         )
-        controller.start(executableURL: URL(fileURLWithPath: "/usr/bin/true")) {}
+        await controller.start(executableURL: URL(fileURLWithPath: "/usr/bin/true")) {}
 
         XCTAssertEqual(
             controller.state,
@@ -704,7 +704,7 @@ final class CommandAndParserTests: XCTestCase {
         let controller = CloudflaredLoginController(
             inspector: EnvironmentInspector(homeDirectory: root)
         )
-        controller.start(executableURL: executable) {}
+        await controller.start(executableURL: executable) {}
 
         for _ in 0..<100 where controller.isRunning {
             try await Task.sleep(for: .milliseconds(10))
@@ -742,7 +742,7 @@ final class CommandAndParserTests: XCTestCase {
         let controller = CloudflaredLoginController(
             inspector: EnvironmentInspector(homeDirectory: root)
         )
-        controller.start(executableURL: executable) {}
+        await controller.start(executableURL: executable) {}
         try await Task.sleep(for: .milliseconds(150))
 
         guard case let .failed(message) = controller.state else {

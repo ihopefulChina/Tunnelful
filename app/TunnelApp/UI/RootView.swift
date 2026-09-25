@@ -70,8 +70,6 @@ struct RootView: View {
                 }
             }
             .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .background(AppPalette.chrome)
             .navigationSplitViewColumnWidth(min: 188, ideal: 216, max: 260)
         } detail: {
             NavigationStack {

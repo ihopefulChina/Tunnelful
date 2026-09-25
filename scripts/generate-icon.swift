@@ -13,7 +13,7 @@ enum IconError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "用法：generate-icon.swift <AppIcon.appiconset> <品牌图标.png> <网站图标.png>"
+            return "用法：generate-icon.swift <AppIcon.icon> <品牌图标.png> <网站图标.png>"
         case .context:
             return "无法创建图标绘图上下文"
         case .write(let path):
@@ -49,21 +49,7 @@ func roundedRectPath(_ rect: CGRect, radius: CGFloat) -> CGPath {
     )
 }
 
-func renderMaster() throws -> CGImage {
-    let context = try makeContext(size: canvasSize)
-    let scale = CGFloat(canvasSize)
-
-    // A single, flat field keeps the icon legible at menu, Finder and release sizes.
-    context.setFillColor(CGColor(red: 0.125, green: 0.125, blue: 0.118, alpha: 1.0))
-    context.addPath(
-        roundedRectPath(
-            CGRect(x: scale * 0.055, y: scale * 0.055, width: scale * 0.89, height: scale * 0.89),
-            radius: scale * 0.205
-        )
-    )
-    context.fillPath()
-
-    // Original tunnel aperture: one uninterrupted white silhouette with a blue void.
+func aperturePath() -> CGPath {
     let aperture = CGMutablePath()
     aperture.move(to: CGPoint(x: 276, y: 258))
     aperture.addLine(to: CGPoint(x: 276, y: 500))
@@ -92,21 +78,115 @@ func renderMaster() throws -> CGImage {
     )
     aperture.addLine(to: CGPoint(x: 386, y: 258))
     aperture.closeSubpath()
+    return aperture
+}
+
+func renderMaster(plate: (CGFloat, CGFloat, CGFloat) = (0.125, 0.125, 0.118)) throws -> CGImage {
+    let context = try makeContext(size: canvasSize)
+    let scale = CGFloat(canvasSize)
+
+    // A single, flat field keeps the icon legible at menu, Finder and release sizes.
+    context.setFillColor(CGColor(red: plate.0, green: plate.1, blue: plate.2, alpha: 1.0))
+    context.addPath(
+        roundedRectPath(
+            CGRect(x: scale * 0.055, y: scale * 0.055, width: scale * 0.89, height: scale * 0.89),
+            radius: scale * 0.205
+        )
+    )
+    context.fillPath()
 
     context.setFillColor(CGColor(gray: 1.0, alpha: 1.0))
-    context.addPath(aperture)
+    context.addPath(aperturePath())
     context.fillPath()
 
     guard let image = context.makeImage() else { throw IconError.context }
     return image
 }
 
-func render(_ source: CGImage, size: Int) throws -> CGImage {
-    let context = try makeContext(size: size)
-    context.clear(CGRect(x: 0, y: 0, width: size, height: size))
-    context.draw(source, in: CGRect(x: 0, y: 0, width: size, height: size))
+func renderAperture() throws -> CGImage {
+    let context = try makeContext(size: canvasSize)
+    context.clear(CGRect(x: 0, y: 0, width: canvasSize, height: canvasSize))
+    context.setFillColor(CGColor(gray: 1.0, alpha: 1.0))
+    context.addPath(aperturePath())
+    context.fillPath()
     guard let image = context.makeImage() else { throw IconError.context }
     return image
+}
+
+func writeIconDocument(at directory: URL, aperture: CGImage) throws {
+    let assets = directory.appendingPathComponent("Assets", isDirectory: true)
+    try FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
+    try writePNG(aperture, to: assets.appendingPathComponent("aperture.png"))
+
+    let document = """
+    {
+      "fill-specializations" : [
+        {
+          "value" : {
+            "solid" : "extended-srgb:0.12500,0.12500,0.11800,1.00000"
+          }
+        },
+        {
+          "appearance" : "dark",
+          "value" : {
+            "solid" : "extended-srgb:0.06600,0.06600,0.06200,1.00000"
+          }
+        }
+      ],
+      "groups" : [
+        {
+          "layers" : [
+            {
+              "fill-specializations" : [
+                {
+                  "value" : {
+                    "solid" : "extended-srgb:1.00000,1.00000,1.00000,1.00000"
+                  }
+                },
+                {
+                  "appearance" : "dark",
+                  "value" : {
+                    "solid" : "extended-srgb:1.00000,1.00000,1.00000,1.00000"
+                  }
+                },
+                {
+                  "appearance" : "tinted",
+                  "value" : {
+                    "solid" : "extended-srgb:1.00000,1.00000,1.00000,1.00000"
+                  }
+                }
+              ],
+              "glass" : false,
+              "image-name" : "aperture.png",
+              "name" : "Aperture"
+            }
+          ],
+          "name" : "Aperture",
+          "shadow" : {
+            "kind" : "neutral",
+            "opacity" : 0.35
+          },
+          "specular" : true,
+          "translucency" : {
+            "enabled" : true,
+            "value" : 0.15
+          }
+        }
+      ],
+      "supported-platforms" : {
+        "squares" : [
+          "macOS"
+        ]
+      }
+    }
+    """
+    let jsonURL = directory.appendingPathComponent("icon.json")
+    guard let data = document.data(using: .utf8) else { throw IconError.write(jsonURL.path) }
+    do {
+        try data.write(to: jsonURL, options: .atomic)
+    } catch {
+        throw IconError.write(jsonURL.path)
+    }
 }
 
 func writePNG(_ image: CGImage, to url: URL) throws {
@@ -127,11 +207,11 @@ func writePNG(_ image: CGImage, to url: URL) throws {
 do {
     guard CommandLine.arguments.count == 4 else { throw IconError.usage }
 
-    let appIconDirectory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+    let iconDocument = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
     let brandOutput = URL(fileURLWithPath: CommandLine.arguments[2])
     let websiteOutput = URL(fileURLWithPath: CommandLine.arguments[3])
 
-    try FileManager.default.createDirectory(at: appIconDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: iconDocument, withIntermediateDirectories: true)
     try FileManager.default.createDirectory(
         at: brandOutput.deletingLastPathComponent(),
         withIntermediateDirectories: true
@@ -142,29 +222,17 @@ do {
     )
 
     let master = try renderMaster()
-    let outputs: [(String, Int)] = [
-        ("icon_16x16.png", 16),
-        ("icon_16x16@2x.png", 32),
-        ("icon_32x32.png", 32),
-        ("icon_32x32@2x.png", 64),
-        ("icon_128x128.png", 128),
-        ("icon_128x128@2x.png", 256),
-        ("icon_256x256.png", 256),
-        ("icon_256x256@2x.png", 512),
-        ("icon_512x512.png", 512),
-        ("icon_512x512@2x.png", 1024),
-    ]
-
-    for (filename, size) in outputs {
-        try writePNG(
-            try render(master, size: size),
-            to: appIconDirectory.appendingPathComponent(filename)
-        )
-    }
+    // Dark pages use #181816. The default plate disappears into that background,
+    // so the dark mark sits on a lifted field and keeps the same white aperture.
+    let darkMaster = try renderMaster(plate: (0.227, 0.227, 0.216))
+    try writeIconDocument(at: iconDocument, aperture: try renderAperture())
     try writePNG(master, to: brandOutput)
     try writePNG(master, to: websiteOutput)
+    let darkName = websiteOutput.deletingPathExtension().lastPathComponent + "-dark.png"
+    let darkOutput = websiteOutput.deletingLastPathComponent().appendingPathComponent(darkName)
+    try writePNG(darkMaster, to: darkOutput)
 
-    print("已生成 \(outputs.count) 个 AppIcon 尺寸与 2 个 1024px 品牌图标")
+    print("已生成 1 个分层图标、2 个 1024px 品牌图标与 1 个深色页面图标")
 } catch {
     FileHandle.standardError.write(Data("\(error)\n".utf8))
     exit(1)

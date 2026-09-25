@@ -11,7 +11,16 @@ export const metadata: Metadata = {
   description:
     '安全编辑 Ingress、预览并确认 DNS 路由，分别查看进程、Edge 与源站状态。窗口关闭后仍常驻菜单栏。',
   icons: {
-    icon: `${basePath}/tunnelful-icon.png`,
+    icon: [
+      {
+        url: `${basePath}/tunnelful-icon.png`,
+        media: '(prefers-color-scheme: light)',
+      },
+      {
+        url: `${basePath}/tunnelful-icon-dark.png`,
+        media: '(prefers-color-scheme: dark)',
+      },
+    ],
   },
 };
 

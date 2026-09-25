@@ -135,6 +135,17 @@ enum ProcessLifetimeSupervisor {
     static func waitForChildStatus(
         at url: URL,
         timeout: TimeInterval = 2
+    ) async -> WatchdogChildStatus {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: readChildStatus(at: url, timeout: timeout))
+            }
+        }
+    }
+
+    private static func readChildStatus(
+        at url: URL,
+        timeout: TimeInterval
     ) -> WatchdogChildStatus {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -150,7 +161,7 @@ enum ProcessLifetimeSupervisor {
             }
             usleep(10_000)
         }
-        return .started
+        return .failed("看门狗在时限内没有报告子进程是否启动。")
     }
 
     private static func supervise(_ launch: SupervisedProcessLaunch) -> Int32 {
@@ -166,10 +177,15 @@ enum ProcessLifetimeSupervisor {
 
         do {
             try child.run()
-            writeStatus("ok", to: launch.statusFilePath)
+            guard writeStatus("ok", to: launch.statusFilePath) else {
+                kill(child.processIdentifier, SIGKILL)
+                child.waitUntilExit()
+                _ = writeStatus("fail:无法写入看门狗状态。", to: launch.statusFilePath)
+                return childCouldNotStartExitCode
+            }
         } catch {
             let message = error.localizedDescription
-            writeStatus("fail:\(message)", to: launch.statusFilePath)
+            _ = writeStatus("fail:\(message)", to: launch.statusFilePath)
             FileHandle.standardError.write(
                 Data("Tunnelful 看门狗无法启动子进程：\(message)\n".utf8)
             )
@@ -228,9 +244,18 @@ enum ProcessLifetimeSupervisor {
         return child.terminationStatus
     }
 
-    private static func writeStatus(_ text: String, to path: String?) {
-        guard let path else { return }
-        try? Data("\(text)\n".utf8).write(to: URL(fileURLWithPath: path), options: .atomic)
+    @discardableResult
+    private static func writeStatus(_ text: String, to path: String?) -> Bool {
+        guard let path else { return true }
+        do {
+            try Data("\(text)\n".utf8).write(to: URL(fileURLWithPath: path), options: .atomic)
+            return true
+        } catch {
+            FileHandle.standardError.write(
+                Data("Tunnelful 看门狗无法写入状态文件：\(error.localizedDescription)\n".utf8)
+            )
+            return false
+        }
     }
 
     private static func detachFromParentProcessGroup() {

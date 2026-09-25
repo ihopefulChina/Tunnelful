@@ -2,6 +2,7 @@ import Image from 'next/image';
 
 import DownloadChooser from './DownloadChooser';
 import { releaseTagURL, releaseVersion, repositoryURL } from './release';
+import SiteIcon from './SiteIcon';
 import ThemeToggle from './ThemeToggle';
 
 const basePath = process.env.TUNNELFUL_PAGES === '1' ? '/Tunnelful' : '';
@@ -9,15 +10,7 @@ const basePath = process.env.TUNNELFUL_PAGES === '1' ? '/Tunnelful' : '';
 function Brand() {
   return (
     <span className="brand">
-      <Image
-        src={`${basePath}/tunnelful-icon.png`}
-        width={28}
-        height={28}
-        alt=""
-        aria-hidden="true"
-        priority
-        unoptimized
-      />
+      <SiteIcon size={28} priority />
       <span>Tunnelful</span>
     </span>
   );
@@ -191,14 +184,7 @@ export default function Home() {
         </section>
 
         <section className="final-cta" aria-labelledby="download-title">
-          <Image
-            src={`${basePath}/tunnelful-icon.png`}
-            width={76}
-            height={76}
-            alt=""
-            aria-hidden="true"
-            unoptimized
-          />
+          <SiteIcon size={76} />
           <h2 id="download-title">让 Tunnel 回到 Mac 的使用方式。</h2>
           <p>免费、开源。分别为 Apple 芯片与 Intel Mac 提供原生安装包。</p>
           <a className="button button-primary" href="#downloads">

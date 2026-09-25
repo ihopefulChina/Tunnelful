@@ -534,9 +534,11 @@ final class AppModel: ObservableObject {
             alertMessage = CloudflaredError.executableNotFound.localizedDescription
             return
         }
-        loginController.start(executableURL: installation.executableURL) { [weak self] in
-            guard let self else { return }
-            Task { await self.bootstrap(reportErrors: true) }
+        Task { @MainActor in
+            await loginController.start(executableURL: installation.executableURL) { [weak self] in
+                guard let self else { return }
+                Task { await self.bootstrap(reportErrors: true) }
+            }
         }
     }
 
@@ -1236,20 +1238,25 @@ final class AppModel: ObservableObject {
             alertMessage = "所选 Tunnel 与当前配置的 tunnel / credentials-file 不匹配。请导入这个 Tunnel 的本地配置，避免把专属凭据配给其他 Tunnel。"
             return
         }
-        do {
-            let client = CloudflaredClient(installation: installation)
-            try processController.start(
-                executableURL: installation.executableURL,
-                arguments: client.runArguments(
-                    tunnel: name,
-                    configURL: selectedConfigURL,
-                    transportProtocol: transportProtocol
-                ),
-                tunnelName: name
-            )
-            startupAutomationMessage = nil
-        } catch {
-            alertMessage = error.localizedDescription
+        let client = CloudflaredClient(installation: installation)
+        let arguments = client.runArguments(
+            tunnel: name,
+            configURL: selectedConfigURL,
+            transportProtocol: transportProtocol
+        )
+        let executableURL = installation.executableURL
+        Task { @MainActor in
+            do {
+                try await processController.start(
+                    executableURL: executableURL,
+                    arguments: arguments,
+                    tunnelName: name
+                )
+                startupAutomationMessage = nil
+            } catch {
+                guard !isTerminating else { return }
+                alertMessage = error.localizedDescription
+            }
         }
     }
 
@@ -1298,19 +1305,24 @@ final class AppModel: ObservableObject {
             return
         }
         let client = CloudflaredClient(installation: installation)
-        do {
-            try processController.restart(
-                executableURL: installation.executableURL,
-                arguments: client.runArguments(
-                    tunnel: name,
-                    configURL: selectedConfigURL,
-                    transportProtocol: transportProtocol
-                ),
-                tunnelName: name
-            )
-            startupAutomationMessage = nil
-        } catch {
-            alertMessage = error.localizedDescription
+        let arguments = client.runArguments(
+            tunnel: name,
+            configURL: selectedConfigURL,
+            transportProtocol: transportProtocol
+        )
+        let executableURL = installation.executableURL
+        Task { @MainActor in
+            do {
+                try await processController.restart(
+                    executableURL: executableURL,
+                    arguments: arguments,
+                    tunnelName: name
+                )
+                startupAutomationMessage = nil
+            } catch {
+                guard !isTerminating else { return }
+                alertMessage = error.localizedDescription
+            }
         }
     }
 
