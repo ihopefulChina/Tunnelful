@@ -159,31 +159,33 @@ summary,
 }
 
 .site-icon img {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
   border-radius: 22%;
 }
 
-.site-icon-dark {
+.site-icon img.site-icon-dark {
   display: none;
 }
 
 @media (prefers-color-scheme: dark) {
-  html:not([data-theme='light']) .site-icon-light {
+  html:not([data-theme='light']) .site-icon img.site-icon-light {
     display: none;
   }
 
-  html:not([data-theme='light']) .site-icon-dark {
+  html:not([data-theme='light']) .site-icon img.site-icon-dark {
     display: block;
   }
 }
 
-html[data-theme='dark'] .site-icon-light {
+html[data-theme='dark'] .site-icon img.site-icon-light {
   display: none;
 }
 
-html[data-theme='dark'] .site-icon-dark {
+html[data-theme='dark'] .site-icon img.site-icon-dark {
   display: block;
 }
 
